@@ -1,0 +1,17 @@
+{
+  "name": "magnat-online",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Le Magnat, jeu de cartes en ligne pour 4 à 6 joueurs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/run.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
