@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d1822">
+<title>Le Magnat</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,500..800&family=Instrument+Sans:wght@400..700&display=swap">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="conn" class="conn" hidden role="status">Connexion perdue. Reconnexion…</div>
+
+<main class="app">
+
+  <!-- Accueil -->
+  <section id="home" class="screen">
+    <header class="top">
+      <div class="brand">
+        <h1>Le Magnat</h1>
+        <p class="sub">Jeu de cartes · 4 à 6 joueurs</p>
+      </div>
+    </header>
+    <div class="panel-block">
+      <label class="field" for="name">Ton pseudo</label>
+      <input id="name" class="input" type="text" maxlength="16" autocomplete="nickname" placeholder="Ex. Léa">
+    </div>
+    <div class="grid2">
+      <form class="panel-block" id="createForm">
+        <h2>Créer une table</h2>
+        <label class="field" for="roundsNew">Nombre de manches</label>
+        <select id="roundsNew">
+          <option value="1">1 manche</option>
+          <option value="3" selected>3 manches</option>
+          <option value="5">5 manches</option>
+          <option value="7">7 manches</option>
+        </select>
+        <button class="btn primary" type="submit">Créer la table</button>
+      </form>
+      <form class="panel-block" id="joinForm">
+        <h2>Rejoindre une table</h2>
+        <label class="field" for="code">Code à 4 lettres</label>
+        <input id="code" class="input code-input" type="text" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD">
+        <button class="btn primary" type="submit">Rejoindre</button>
+      </form>
+    </div>
+    <details class="rules">
+      <summary>Règles</summary>
+      <ul>
+        <li>54 cartes (deux jokers), distribuées entre 4, 5 ou 6 joueurs. Le but est de vider sa main.</li>
+        <li>Du plus faible au plus fort : 3, 4 … Roi, As, 2, puis le Joker.</li>
+        <li>Tu joues une carte, une paire, un brelan ou un carré. Les suivants jouent autant de cartes, de valeur plus forte, ou passent. Si tout le monde passe, le dernier à avoir joué rouvre la table.</li>
+        <li>Un 8 coupe : la table est balayée et son auteur rejoue.</li>
+        <li>Le Joker se joue seul. Seul le 3 de pique le bat, et il balaie aussi la table.</li>
+        <li>Un carré déclenche une révolution : la hiérarchie s'inverse jusqu'à la fin de la manche. Un second carré la remet à l'endroit.</li>
+        <li>À partir de la 2e manche, les cartes s'échangent : le dernier donne ses 2 meilleures cartes au premier, qui lui en rend 2 de son choix. L'avant-dernier donne sa meilleure carte au deuxième, qui lui en rend 1 de son choix.</li>
+        <li>La manche s'arrête quand il ne reste qu'un joueur avec des cartes. Le premier gagne autant de points que d'adversaires, le dernier zéro.</li>
+      </ul>
+    </details>
+  </section>
+
+  <!-- Salon -->
+  <section id="lobby" class="screen" hidden>
+    <header class="top">
+      <div class="brand">
+        <h1>Table <span id="lobbyCode" class="code"></span></h1>
+        <p class="sub" id="lobbyCount"></p>
+      </div>
+      <button class="btn" id="leaveLobby" type="button">Quitter</button>
+    </header>
+    <div class="panel-block">
+      <label class="field" for="shareLink">Envoie ce lien à tes amis</label>
+      <div class="copyrow">
+        <input id="shareLink" class="input" type="text" readonly>
+        <button class="btn" id="copyLink" type="button">Copier</button>
+      </div>
+    </div>
+    <div class="panel-block">
+      <h2>Joueurs</h2>
+      <ul id="seatList" class="seatlist"></ul>
+      <div id="hostCtl" class="hostctl">
+        <button class="btn" id="addBot" type="button">Ajouter un bot</button>
+        <div class="cfg">
+          <label for="levelSel">Niveau des bots</label>
+          <select id="levelSel">
+            <option value="easy">Tranquille</option>
+            <option value="medium">Sérieuse</option>
+            <option value="hard">À couteaux tirés</option>
+          </select>
+        </div>
+        <div class="cfg">
+          <label for="roundsSel">Manches</label>
+          <select id="roundsSel">
+            <option value="1">1</option>
+            <option value="3">3</option>
+            <option value="5">5</option>
+            <option value="7">7</option>
+          </select>
+        </div>
+      </div>
+      <p class="hint" id="cfgInfo"></p>
+      <p class="hint" id="lobbyHint" aria-live="polite"></p>
+      <button class="btn primary" id="startBtn" type="button">Lancer la partie</button>
+    </div>
+  </section>
+
+  <!-- Partie -->
+  <section id="game" class="screen" hidden>
+    <header class="top">
+      <div class="brand">
+        <h1 class="h1-small">Le Magnat</h1>
+        <p class="sub">Manche <b id="gRound">1</b> sur <b id="gRounds">3</b> · table <b id="gCode"></b> <span id="gRev" class="badge-rev" hidden>Révolution</span></p>
+      </div>
+      <button class="btn" id="leaveGame" type="button">Quitter</button>
+    </header>
+
+    <section class="ladder" aria-label="Hiérarchie des cartes">
+      <span class="end">Faible</span>
+      <ol id="ladder"></ol>
+      <span class="end">Fort</span>
+    </section>
+
+    <section class="board" aria-label="Table de jeu">
+      <div class="opps" id="opps"></div>
+      <div class="center" id="center"></div>
+    </section>
+
+    <section class="me" id="me" aria-label="Ta main">
+      <div class="mehead">
+        <span class="nm" id="meName"></span>
+        <span class="meta" id="meMeta"></span>
+      </div>
+      <div class="hint" id="hint" aria-live="polite"></div>
+      <div class="hint exinfo" id="exInfo" hidden></div>
+      <div class="hand" id="hand"></div>
+      <div class="actions">
+        <button class="btn primary" id="playBtn" type="button">Jouer</button>
+        <button class="btn" id="passBtn" type="button">Passer</button>
+      </div>
+    </section>
+  </section>
+
+</main>
+
+<div class="overlay" id="overlay" hidden role="dialog" aria-modal="true" aria-labelledby="ovTitle">
+  <div class="panel" id="panel"></div>
+</div>
+<div id="toast" class="toast" hidden role="status"></div>
+
+<script src="/engine.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
