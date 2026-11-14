@@ -391,7 +391,8 @@ function renderOverlay() {
   if (V.status === 'roundover') {
     html = '<h2 id="ovTitle">Manche ' + V.round + ' terminée</h2><ol>'
       + r.finished.map((p, i) => '<li><span class="pos">' + ORD[i] + '</span><span class="who">' + esc(V.seats[p].name) + '</span><span class="role">' + M.roleName(n, i) + '</span><span class="pts">+' + r.gained[i] + '</span></li>').join('')
-      + '</ol><div class="total">Points : ' + V.seats.map(s => esc(s.name) + ' ' + s.score).join(' · ') + '</div>'
+      + '</ol>' + (r.demoted != null ? '<div class="total">' + esc(V.seats[r.demoted].name) + ' n’a pas gardé son titre de Magnat : il sera dernier à la prochaine manche.</div>' : '')
+      + '<div class="total">Points : ' + V.seats.map(s => esc(s.name) + ' ' + s.score).join(' · ') + '</div>'
       + '<div class="btnrow"><button class="btn primary" id="ovNext" type="button">Manche suivante</button></div>';
   } else {
     const order = V.seats.map((s, i) => i).sort((a, b) => V.seats[b].score - V.seats[a].score);

@@ -213,7 +213,7 @@
   }
 
   // ---- Points et rôles ----
-  function pointsFor(n, i) { return n - 1 - i; }
+  function pointsFor(n, i) { return (n - 1 - i) * 10; }
   function roleName(n, i) {
     if (i === 0) return 'Millionnaire';
     if (i === 1) return 'Riche';
