@@ -176,14 +176,27 @@ function faceHTML(c, tag, extra, attrs) {
 function sortedHand() {
   return V.hand.slice().sort((a, b) => M.strength(a.rank, V.rev) - M.strength(b.rank, V.rev) || a.suit.localeCompare(b.suit));
 }
-function cardPlayable(c) {
+let PI = { ranks: new Set(), joker: false, all: true };
+function computePI() {
   const t = V.table;
-  if (!t) return true;
-  if (t.rank === M.JOKER) return M.isSpade3(c);
-  if (c.rank === M.JOKER) return M.validate([c], t, V.rev).ok;
-  const group = V.hand.filter(x => x.rank === c.rank).sort((a, b) => (M.isSpade3(a) ? 1 : 0) - (M.isSpade3(b) ? 1 : 0));
-  if (group.length < t.count) return false;
-  return M.validate(group.slice(0, t.count), t, V.rev).ok;
+  if (!t) { PI = { ranks: new Set(), joker: false, all: true }; return; }
+  const mv = M.generateMoves(V.hand, t, V.rev);
+  PI = { ranks: new Set(), joker: false, all: false, moves: mv };
+  for (const m of mv) {
+    if (m.rank === M.JOKER) PI.joker = true;
+    else { PI.ranks.add(m.rank); if (m.jokers > 0) PI.joker = true; }
+    if (m.cards.length === 1 && M.isSpade3(m.cards[0]) && t.rank === M.JOKER) PI.ranks.add(m.rank);
+  }
+}
+function cardPlayable(c) {
+  if (PI.all) return true;
+  return c.rank === M.JOKER ? PI.joker : PI.ranks.has(c.rank);
+}
+function autoPick(c, need) {
+  const same = V.hand.filter(x => x.rank === c.rank && x.id !== c.id).sort((a, b) => (M.isSpade3(a) ? 1 : 0) - (M.isSpade3(b) ? 1 : 0));
+  let pick = [c].concat(same).slice(0, need);
+  if (pick.length < need) pick = pick.concat(V.hand.filter(x => x.rank === M.JOKER).slice(0, need - pick.length));
+  return pick.map(x => x.id);
 }
 function needText() {
   const t = V.table;
@@ -225,7 +238,9 @@ function renderCenter() {
     inner += '<div class="empty-table">Échange de cartes</div><div class="cap">' + (waiting.join(' · ') || 'Échanges terminés') + '</div>';
   } else if (t) {
     inner += '<div class="pile">' + t.cards.map(c => faceHTML(c, 'span')).join('') + '</div>'
-      + '<div class="cap"><b>' + name(t.by) + '</b> · ' + (t.count === 1 ? 'seul' : t.count === 2 ? 'paire' : t.count === 3 ? 'brelan' : 'carré') + '</div>';
+      + '<div class="cap"><b>' + name(t.by) + '</b> · ' + (t.count === 1 ? 'seul' : t.count === 2 ? 'paire' : t.count === 3 ? 'brelan' : 'carré')
+      + (t.count > 1 && t.rank !== M.JOKER ? ' de ' + M.RANK_WORD[t.rank] : '')
+      + (t.count > 1 ? (() => { const j = t.cards.filter(c => c.rank === M.JOKER).length; return j ? ' avec ' + (j === 1 ? 'un Joker' : 'deux Jokers') : ''; })() : '') + '</div>';
   } else if (V.shown && V.shown.cut) {
     inner += '<div class="pile faded">' + V.shown.cards.map(c => faceHTML(c, 'span')).join('') + '</div>'
       + '<div class="cap">Table balayée par <b>' + name(V.shown.by) + '</b></div>';
@@ -254,6 +269,7 @@ function exchangeHint() {
 function renderHand() {
   const mine = V.status === 'play' && V.current === V.you;
   const giving = needGive();
+  computePI();
   const recv = new Set(((V.exchange && V.exchange.mine && V.exchange.mine.received) || []).map(c => c.id));
   $('hand').innerHTML = sortedHand().map(c => {
     let ex = '';
@@ -267,7 +283,7 @@ function renderHand() {
   $('meMeta').textContent = (me.pos >= 0 ? ORD[me.pos] + ' · ' + M.roleName(V.n, me.pos) + ' · ' : V.hand.length + ' carte' + (V.hand.length > 1 ? 's' : '') + ' · ') + me.score + ' pt' + (me.score > 1 ? 's' : '');
   const cards = sel.map(id => V.hand.find(c => c.id === id)).filter(Boolean);
   const ok = giving ? sel.length === V.exchange.mine.k : (mine && M.validate(cards, V.table, V.rev).ok);
-  const stuck = mine && V.table && M.generateMoves(V.hand, V.table, V.rev).length === 0;
+  const stuck = mine && V.table && PI.moves && PI.moves.length === 0;
   $('playBtn').textContent = giving ? 'Donner à ' + V.seats[V.exchange.mine.partner].name : 'Jouer';
   $('playBtn').hidden = V.status === 'exchange' && !giving;
   $('playBtn').disabled = !ok;
@@ -318,17 +334,27 @@ $('hand').addEventListener('click', e => {
   if (V.status !== 'play' || V.current !== V.you) return;
   const c = V.hand.find(x => x.id === id); if (!c) return;
   const t = V.table;
+  const J = M.JOKER, limit = t ? t.count : 4;
+  const cur = sel.map(i => V.hand.find(x => x.id === i)).filter(Boolean);
+  const real = cur.filter(x => x.rank !== J), jk = cur.length - real.length;
+  const lone = t && t.rank === J;
   if (sel.includes(id)) {
-    sel = (t && t.count > 1) ? [] : sel.filter(x => x !== id);
-  } else if (t && t.rank !== M.JOKER && t.count > 1 && c.rank !== M.JOKER) {
-    const group = V.hand.filter(x => x.rank === c.rank).sort((a, b2) => (M.isSpade3(a) ? 1 : 0) - (M.isSpade3(b2) ? 1 : 0));
-    const pick = group.slice(0, t.count);
-    if (!pick.some(x => x.id === id)) pick[pick.length - 1] = c;
-    sel = pick.map(x => x.id);
-  } else {
-    const first = V.hand.find(x => x.id === sel[0]);
-    if (first && first.rank === c.rank && c.rank !== M.JOKER && (!t || sel.length < t.count)) sel.push(id);
+    sel = sel.filter(x => x !== id);
+  } else if (lone) {
+    sel = [id];
+  } else if (!cur.length && t && t.count > 1) {
+    sel = c.rank === J ? [id] : autoPick(c, t.count);
+  } else if (c.rank === J) {
+    if (real.length && jk < 2 && cur.length < limit) sel.push(id);
+    else if (!real.length && !cur.length) sel = [id];
+    else if (!real.length && cur.length < limit && jk < 1) sel.push(id);
     else sel = [id];
+  } else if (!real.length && cur.length && cur.length < limit) {
+    sel.push(id);
+  } else if (real.length && real[0].rank === c.rank && cur.length < limit) {
+    sel.push(id);
+  } else {
+    sel = (t && t.count > 1) ? autoPick(c, t.count) : [id];
   }
   renderHand();
 });

@@ -30,26 +30,40 @@
   }
   function isSpade3(c) { return c.rank === 3 && c.suit === 'S'; }
 
+  // Lit un groupe de cartes. Le Joker seul est la carte la plus forte.
+  // Avec d'autres cartes, il remplace n'importe quelle valeur : 5 + Joker = paire de 5.
+  // Deux Jokers sans autre carte ne forment pas un groupe.
+  function analyze(cards) {
+    const n = cards.length;
+    if (n < 1 || n > 4) return null;
+    const real = cards.filter(c => c.rank !== JOKER);
+    const jokers = n - real.length;
+    if (real.length === 0) return jokers === 1 ? { rank: JOKER, count: 1, jokers: 0 } : null;
+    const r = real[0].rank;
+    if (real.some(c => c.rank !== r)) return null;
+    return { rank: r, count: n, jokers };
+  }
+
   function validate(cards, table, rev) {
     if (!cards.length) return { ok: false, why: 'empty' };
-    const r = cards[0].rank;
-    if (cards.some(c => c.rank !== r)) return { ok: false, why: 'mixed' };
     if (cards.length > 4) return { ok: false, why: 'toomany' };
-    if (r === JOKER && cards.length > 1) return { ok: false, why: 'jokeralone' };
+    const a = analyze(cards);
+    if (!a) return { ok: false, why: cards.every(c => c.rank === JOKER) ? 'jokeralone' : 'mixed' };
     if (!table) return { ok: true };
-    if (table.rank === JOKER) {
+    if (table.rank === JOKER) {      // seul le 3 de pique bat un Joker joué seul
       return (cards.length === 1 && isSpade3(cards[0])) ? { ok: true, counter: true } : { ok: false, why: 'joker' };
     }
-    if (cards.length !== table.count) return { ok: false, why: 'count' };
-    if (strength(r, rev) <= strength(table.rank, rev)) return { ok: false, why: 'weak' };
+    if (a.count !== table.count) return { ok: false, why: 'count' };
+    if (strength(a.rank, rev) <= strength(table.rank, rev)) return { ok: false, why: 'weak' };
     return { ok: true };
   }
 
   function generateMoves(hand, table, rev) {
     const moves = [];
+    const jokers = hand.filter(c => c.rank === JOKER);
     if (table && table.rank === JOKER) {
       const sp = hand.find(isSpade3);
-      if (sp) moves.push({ cards: [sp], rank: 3, count: 1, groupSize: 1 });
+      if (sp) moves.push({ cards: [sp], rank: 3, count: 1, groupSize: 1, jokers: 0 });
       return moves;
     }
     const groups = new Map();
@@ -61,12 +75,13 @@
     for (const [r, g] of groups) {
       g.sort((a, b) => (isSpade3(a) ? 1 : 0) - (isSpade3(b) ? 1 : 0));
       for (let k = 1; k <= g.length; k++) {
-        const cards = g.slice(0, k);
-        if (validate(cards, table, rev).ok) moves.push({ cards, rank: r, count: k, groupSize: g.length });
+        for (let j = 0; j <= Math.min(jokers.length, 2) && k + j <= 4; j++) {
+          const cards = g.slice(0, k).concat(jokers.slice(0, j));
+          if (validate(cards, table, rev).ok) moves.push({ cards, rank: r, count: k + j, groupSize: g.length, jokers: j });
+        }
       }
     }
-    const jk = hand.find(c => c.rank === JOKER);
-    if (jk && validate([jk], table, rev).ok) moves.push({ cards: [jk], rank: JOKER, count: 1, groupSize: 1 });
+    if (jokers.length && validate([jokers[0]], table, rev).ok) moves.push({ cards: [jokers[0]], rank: JOKER, count: 1, groupSize: 1, jokers: 0 });
     return moves;
   }
 
@@ -93,11 +108,12 @@
     if (ids.size !== cards.length) throw new Error('carte en double');
     if (cards.some(c => !S.hands[p].some(h => h.id === c.id))) throw new Error('carte absente de la main');
     S.hands[p] = S.hands[p].filter(c => !ids.has(c.id));
-    const rank = cards[0].rank, count = cards.length;
-    const ev = { p, cards, rank, count, rev: false, cut: false, counter: !!v.counter, finished: false };
+    const a = analyze(cards);
+    const rank = a.rank, count = a.count;
+    const ev = { p, cards, rank, count, jokers: a.jokers, rev: false, cut: false, counter: !!v.counter, finished: false };
     S.table = { cards, rank, count, by: p };
     S.lastPlayer = p; S.passes = [];
-    if (rank === JOKER) S.jokersPlayed++;
+    S.jokersPlayed += cards.filter(c => c.rank === JOKER).length;
     if (count === 4) { S.rev = !S.rev; ev.rev = true; }
     if (S.hands[p].length === 0) { S.finished.push(p); ev.finished = true; }
     const act = seatList(S).filter(q => active(S, q));
@@ -151,7 +167,7 @@
     }
 
     if (level === 'medium') {
-      const cost = m => sv(m) + (m.count < m.groupSize ? 1.5 : 0)
+      const cost = m => sv(m) + ((m.count - (m.jokers || 0)) < m.groupSize ? 1.5 : 0) + (m.jokers || 0) * 3
         + (table ? 0 : (m.rank === 8 ? 5 : 0) + (m.count === 4 ? 6 : 0) + (sv(m) >= 15 ? 4 : 0) - m.count * 0.3);
       moves.sort((a, b) => cost(a) - cost(b));
       const best = moves[0];
@@ -164,7 +180,9 @@
     const cost = m => {
       const v = m.rank === JOKER ? 1.2 : (strength(m.rank, rev) - 3) / 12;
       let c = v * (m.count === 1 ? 1 : 0.8);
-      if (m.count < m.groupSize) c += 0.35 * (m.groupSize - m.count);
+      const real = m.count - (m.jokers || 0);
+      if (real < m.groupSize) c += 0.35 * (m.groupSize - real);
+      c += 0.7 * (m.jokers || 0);
       if (m.rank === 8) c -= 0.25;
       if (m.cards.some(isSpade3) && jokerUnseen) c += 0.5;
       c -= 0.12 * m.count;
@@ -218,7 +236,8 @@
     else if (ev.count === 2) what = 'une paire de ' + rankWord(ev.rank, true);
     else if (ev.count === 3) what = 'un brelan de ' + rankWord(ev.rank, true);
     else what = 'un carré de ' + rankWord(ev.rank, true);
-    let s = name + ' joue ' + what + '.';
+    const wild = ev.count > 1 && ev.jokers > 0 ? ' avec ' + (ev.jokers === 1 ? 'un Joker' : 'deux Jokers') : '';
+    let s = name + ' joue ' + what + wild + '.';
     if (ev.counter) s = name + ' contre le Joker avec le 3 de pique. La table est balayée.';
     else if (ev.rank === 8) s += ' Le 8 coupe : la table est balayée.';
     if (ev.rev) s += ' Révolution !';
@@ -232,7 +251,7 @@
 
   return {
     JOKER, RANK_LABEL, RANK_WORD, SUITS, SUIT_NAME,
-    makeDeck, shuffle, strength, isSpade3, validate, generateMoves,
+    makeDeck, shuffle, strength, isSpade3, analyze, validate, generateMoves,
     active, nextActive, newRound, playCards, passTurn, chooseMove,
     bestCards, cheapestCards,
     pointsFor, roleName, rankWord, describePlay, cardName
