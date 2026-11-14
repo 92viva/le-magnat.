@@ -155,14 +155,20 @@ function ensureHost(room) {
 // ---------- Déroulement ----------
 function startGame(room) {
   room.scores = room.seats.map(() => 0);
-  room.round = 1; room.results = null;
-  startRound(room, Math.floor(Math.random() * room.seats.length));
+  room.round = 1; room.results = null; room.magnat = null; room.rank = null;
+  startRound(room, null);
 }
 function startRound(room, starter, prevOrder) {
   room.S = {};
-  M.newRound(room.S, starter, room.seats.length);
+  M.newRound(room.S, starter == null ? 0 : starter, room.seats.length);
+  if (starter == null) {                       // 1re manche : celui qui a la Dame de cœur ouvre
+    starter = room.S.hands.findIndex(h => h.some(c => c.rank === 12 && c.suit === 'H'));
+    if (starter < 0) starter = 0;
+    room.S.current = starter;
+  }
   room.shown = null; room.results = null; room.exchange = null;
-  room.msg = 'Manche ' + room.round + ' : ' + room.seats[starter].name + ' ouvre.';
+  room.msg = 'Manche ' + room.round + ' : ' + room.seats[starter].name + ' ouvre'
+    + (prevOrder ? ' (dernier de la manche précédente).' : ' (il a la Dame de cœur).');
   if (prevOrder) return startExchange(room, prevOrder);   // dès la 2e manche
   room.status = 'play';
   broadcast(room);
@@ -221,7 +227,14 @@ function endRound(room) {
   const S = room.S, n = room.seats.length;
   const gained = S.finished.map((p, i) => M.pointsFor(n, i));
   S.finished.forEach((p, i) => { room.scores[p] += gained[i]; });
-  room.results = { finished: S.finished.slice(), gained };
+  // Le Magnat doit rester Magnat : s'il ne finit pas premier, il sera dernier à la manche suivante.
+  let rank = S.finished.slice(), demoted = null;
+  if (room.magnat != null && rank[0] !== room.magnat) {
+    demoted = room.magnat;
+    rank = rank.filter(p => p !== demoted).concat(demoted);
+  }
+  room.rank = rank; room.magnat = rank[0];
+  room.results = { finished: S.finished.slice(), gained, rank, demoted };
   room.status = room.round >= room.rounds ? 'gameover' : 'roundover';
   clearTimeout(room.timer); room.timer = null;
 }
@@ -422,7 +435,7 @@ function onMessage(conn, msg) {
     }
     case 'next': {
       if (room.status !== 'roundover') return;
-      const prev = room.S.finished.slice();
+      const prev = (room.rank || room.S.finished).slice();
       room.round++;
       return startRound(room, prev[room.seats.length - 1], prev);
     }
