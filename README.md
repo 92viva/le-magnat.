@@ -4,41 +4,6 @@ Jeu de cartes du Magnat pour 4 à 6 joueurs, jouable dans le navigateur avec un 
 Un petit serveur Node garde l'état de chaque table, valide tous les coups et n'envoie à chaque
 joueur que sa propre main. Tes amis n'ont besoin ni de compte ni d'installation.
 
-## Lancer sur ton ordinateur
-
-Il faut Node 18 ou plus.
-
-```
-npm install
-npm start
-```
-
-Ouvre http://localhost:3000. Pour jouer avec des gens sur le même réseau Wi-Fi, donne-leur
-`http://ADRESSE-IP-DE-TON-ORDI:3000`.
-
-## Mettre en ligne (exemple avec Render)
-
-1. Crée un dépôt GitHub avec le contenu de ce dossier. Ne mets pas `node_modules` (le fichier
-   `.gitignore` s'en charge).
-2. Sur render.com, choisis **New → Web Service** et relie le dépôt.
-3. Réglages : *Runtime* Node, *Build command* `npm install`, *Start command* `npm start`,
-   *Instance type* Free. Le fichier `render.yaml` contient les mêmes réglages si tu préfères
-   passer par un Blueprint.
-4. Quand le déploiement est terminé, ouvre l'adresse `https://…onrender.com`, crée une table
-   et envoie le lien à tes amis.
-
-Avec l'offre gratuite de Render :
-- le service s'arrête après 15 minutes sans trafic et met environ une minute à redémarrer.
-  Les messages WebSocket comptent comme du trafic, donc il reste éveillé tant que quelqu'un joue ;
-- Render peut aussi redémarrer le service à tout moment.
-
-Les tables sont gardées en mémoire. Un arrêt ou un redémarrage du serveur efface donc les
-parties en cours, et les joueurs reviennent à l'écran d'accueil avec un message.
-
-N'importe quel hébergeur Node qui accepte les WebSocket convient (Railway, Fly.io, un petit
-serveur à toi). Le serveur lit le port dans la variable `PORT`. Derrière un proxy HTTPS, le
-navigateur utilise automatiquement `wss://`.
-
 ## Jouer
 
 1. Chacun choisit un pseudo. L'un crée la table et partage le lien ou le code à 4 lettres.
