@@ -110,13 +110,17 @@ function view(room, idx) {
       name: s.name, bot: !!s.bot, connected: s.bot ? true : !!s.connected,
       count: inGame ? S.hands[i].length : 0,
       score: room.scores[i] || 0,
-      pos: inGame ? S.finished.indexOf(i) : -1,
+      pos: inGame ? (S.out && S.out.includes(i) ? room.seats.length - 1 : S.finished.indexOf(i)) : -1,
       passed: inGame && S.passes.includes(i)
     })),
     current: inGame ? S.current : -1,
     table: inGame && S.table ? { rank: S.table.rank, count: S.table.count, by: S.table.by, cards: S.table.cards } : null,
     rev: inGame ? S.rev : false,
     hand: inGame && idx >= 0 ? S.hands[idx] : [],
+    spec: idx >= 0 && !!room.seats[idx].spec,
+    // mode spectateur : seul un joueur qui a fini (et l'a demandé) voit les mains des autres
+    spectate: (inGame && idx >= 0 && room.status === 'play' && room.seats[idx].spec && S.hands[idx].length === 0)
+      ? S.hands.map((h, i) => i === idx ? [] : h) : null,
     msg: room.msg, shown: room.shown, results: room.results,
     exchange: room.exchange && idx >= 0 ? exchangeView(room, idx) : null
   };
@@ -158,6 +162,7 @@ function startGame(room) {
   room.round = 1; room.results = null; room.magnat = null; room.rank = null;
   startRound(room, null);
 }
+function S_magnat(room) { room.S.magnat = room.magnat == null ? null : room.magnat; }
 function startRound(room, starter, prevOrder) {
   room.S = {};
   M.newRound(room.S, starter == null ? 0 : starter, room.seats.length);
@@ -166,6 +171,7 @@ function startRound(room, starter, prevOrder) {
     if (starter < 0) starter = 0;
     room.S.current = starter;
   }
+  S_magnat(room);
   room.shown = null; room.results = null; room.exchange = null;
   room.msg = 'Manche ' + room.round + ' : ' + room.seats[starter].name + ' ouvre'
     + (prevOrder ? ' (dernier de la manche précédente).' : ' (il a la Dame de cœur).');
@@ -227,12 +233,9 @@ function endRound(room) {
   const S = room.S, n = room.seats.length;
   const gained = S.finished.map((p, i) => M.pointsFor(n, i));
   S.finished.forEach((p, i) => { room.scores[p] += gained[i]; });
-  // Le Magnat doit rester Magnat : s'il ne finit pas premier, il sera dernier à la manche suivante.
-  let rank = S.finished.slice(), demoted = null;
-  if (room.magnat != null && rank[0] !== room.magnat) {
-    demoted = room.magnat;
-    rank = rank.filter(p => p !== demoted).concat(demoted);
-  }
+  // Le Magnat qui n'a pas fini premier a été éliminé en cours de manche : il est déjà dernier.
+  const rank = S.finished.slice();
+  const demoted = S.out && S.out.length ? S.out[0] : null;
   room.rank = rank; room.magnat = rank[0];
   room.results = { finished: S.finished.slice(), gained, rank, demoted };
   room.status = room.round >= room.rounds ? 'gameover' : 'roundover';
@@ -241,6 +244,7 @@ function endRound(room) {
 function applyPlay(room, idx, cards, prefix) {
   const ev = M.playCards(room.S, idx, cards);
   room.msg = (prefix || '') + M.describePlay(ev, room.seats[idx].name);
+  if (ev.out != null) room.msg += ' ' + room.seats[ev.out].name + ' n’a pas gardé son titre de Magnat : il est éliminé et finit dernier.';
   room.shown = { cards, by: idx, cut: ev.cut };
   if (room.S.over) endRound(room);
   broadcast(room);
@@ -369,6 +373,10 @@ function onMessage(conn, msg) {
     case 'leave': {
       detach(conn);
       return send(conn.ws, { t: 'left' });
+    }
+    case 'spec': {
+      room.seats[me].spec = !!msg.on;
+      return send(conn.ws, view(room, me));
     }
     case 'addbot': {
       if (!isHost || room.status !== 'lobby') return;
