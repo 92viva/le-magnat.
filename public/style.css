@@ -190,3 +190,7 @@ select:focus-visible, .btn:focus-visible, .input:focus-visible, .card:focus-visi
   .card { transition: none; }
   .btn.hint-pulse { animation: none; }
 }
+
+.opphand { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; max-width: 100%; }
+.opphand .card { --cw: 24px; position: relative; cursor: default; margin: 0; }
+.opphand .card .r { font-size: 9px; } .opphand .card .s { font-size: 13px; }

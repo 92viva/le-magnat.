@@ -38,7 +38,7 @@
     if (n < 1 || n > 4) return null;
     const real = cards.filter(c => c.rank !== JOKER);
     const jokers = n - real.length;
-    if (real.length === 0) return jokers === 1 ? { rank: JOKER, count: 1, jokers: 0 } : null;
+    if (real.length === 0) return jokers <= 2 ? { rank: JOKER, count: jokers, jokers: 0 } : null;   // Joker seul, ou paire de Jokers (la plus forte)
     const r = real[0].rank;
     if (real.some(c => c.rank !== r)) return null;
     return { rank: r, count: n, jokers };
@@ -48,9 +48,9 @@
     if (!cards.length) return { ok: false, why: 'empty' };
     if (cards.length > 4) return { ok: false, why: 'toomany' };
     const a = analyze(cards);
-    if (!a) return { ok: false, why: cards.every(c => c.rank === JOKER) ? 'jokeralone' : 'mixed' };
+    if (!a) return { ok: false, why: 'mixed' };
     if (!table) return { ok: true };
-    if (table.rank === JOKER) {      // seul le 3 de pique bat un Joker joué seul
+    if (table.rank === JOKER && table.count === 1) {      // seul le 3 de pique bat un Joker joué seul
       return (cards.length === 1 && isSpade3(cards[0])) ? { ok: true, counter: true } : { ok: false, why: 'joker' };
     }
     if (a.count !== table.count) return { ok: false, why: 'count' };
@@ -61,7 +61,7 @@
   function generateMoves(hand, table, rev) {
     const moves = [];
     const jokers = hand.filter(c => c.rank === JOKER);
-    if (table && table.rank === JOKER) {
+    if (table && table.rank === JOKER && table.count === 1) {
       const sp = hand.find(isSpade3);
       if (sp) moves.push({ cards: [sp], rank: 3, count: 1, groupSize: 1, jokers: 0 });
       return moves;
@@ -82,6 +82,7 @@
       }
     }
     if (jokers.length && validate([jokers[0]], table, rev).ok) moves.push({ cards: [jokers[0]], rank: JOKER, count: 1, groupSize: 1, jokers: 0 });
+    if (jokers.length >= 2 && validate(jokers.slice(0, 2), table, rev).ok) moves.push({ cards: jokers.slice(0, 2), rank: JOKER, count: 2, groupSize: 2, jokers: 0 });
     return moves;
   }
 
@@ -98,7 +99,7 @@
     S.hands = Array.from({ length: n }, () => []);
     deck.forEach((c, i) => S.hands[i % n].push(c));
     S.table = null; S.lastPlayer = null; S.passes = [];
-    S.finished = []; S.rev = false; S.current = starter; S.over = false; S.jokersPlayed = 0;
+    S.finished = []; S.out = []; S.magnat = null; S.rev = false; S.current = starter; S.over = false; S.jokersPlayed = 0;
   }
 
   function playCards(S, p, cards) {
@@ -116,9 +117,14 @@
     S.jokersPlayed += cards.filter(c => c.rank === JOKER).length;
     if (count === 4) { S.rev = !S.rev; ev.rev = true; }
     if (S.hands[p].length === 0) { S.finished.push(p); ev.finished = true; }
+    // Le Magnat de la manche précédente doit finir premier : si un autre finit avant lui, il est éliminé (dernier).
+    if (ev.finished && S.finished.length === 1 && S.magnat != null && S.magnat !== p && S.hands[S.magnat].length > 0) {
+      S.out = [S.magnat]; S.hands[S.magnat] = []; ev.out = S.magnat;
+    }
     const act = seatList(S).filter(q => active(S, q));
     if (act.length <= 1) {
       if (act.length === 1) S.finished.push(act[0]);
+      for (const q of (S.out || [])) S.finished.push(q);
       S.over = true;
       return ev;
     }
@@ -231,7 +237,7 @@
   }
   function describePlay(ev, name) {
     let what;
-    if (ev.rank === JOKER) what = 'le Joker';
+    if (ev.rank === JOKER) what = ev.count === 2 ? 'une paire de Jokers' : 'le Joker';
     else if (ev.count === 1) what = (ev.rank === 12 ? 'une ' : 'un ') + rankWord(ev.rank);
     else if (ev.count === 2) what = 'une paire de ' + rankWord(ev.rank, true);
     else if (ev.count === 3) what = 'un brelan de ' + rankWord(ev.rank, true);

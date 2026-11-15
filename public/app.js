@@ -22,6 +22,7 @@ let V = null;            // dernière vue envoyée par le serveur
 let sel = [];            // ids des cartes sélectionnées
 let ws = null, backoff = 1000, pingTimer = null, replaced = false;
 let queue = [];          // création / jonction demandées avant l'ouverture de la connexion
+let wantSpec = load('magnat-spec') === '1';   // préférence : mode spectateur quand j'ai fini
 let shownOverlay = '';   // pour ne donner le focus à la fenêtre qu'une fois
 
 // ---------- Connexion ----------
@@ -201,7 +202,7 @@ function autoPick(c, need) {
 function needText() {
   const t = V.table;
   if (!t) return 'Tu ouvres : joue une carte ou un groupe de même valeur.';
-  if (t.rank === M.JOKER) return 'Seul le 3 de pique bat le Joker.';
+  if (t.rank === M.JOKER) return t.count === 1 ? 'Seul le 3 de pique bat le Joker.' : 'Rien ne bat une paire de Jokers : passe.';
   const q = t.count === 1 ? 'une carte' : t.count + ' cartes de même valeur';
   return 'Il faut ' + q + ' plus forte' + (t.count > 1 ? 's' : '') + ' que ' + M.rankWord(t.rank, t.count > 1) + ', ou passer.';
 }
@@ -218,7 +219,9 @@ function seatHTML(i) {
   const where = (s.bot ? ' · bot' : '') + (!s.connected ? ' · absent' : '');
   return '<div class="seat' + (turn ? ' turn' : '') + (!s.connected ? ' away' : '') + '">'
     + '<span class="nm">' + esc(s.name) + '</span>'
-    + '<span class="stack" aria-hidden="true">' + '<span class="mini"></span>'.repeat(backs) + '</span>'
+    + (V.spectate && V.spectate[i] && V.spectate[i].length
+      ? '<span class="opphand">' + V.spectate[i].slice().sort((x, y) => M.strength(x.rank, V.rev) - M.strength(y.rank, V.rev)).map(c => faceHTML(c, 'span')).join('') + '</span>'
+      : '<span class="stack" aria-hidden="true">' + '<span class="mini"></span>'.repeat(backs) + '</span>')
     + '<span class="meta">' + (s.pos >= 0 && s.count === 0 ? 'Terminé' : s.count + ' carte' + (s.count > 1 ? 's' : '')) + ' · ' + s.score + ' pt' + (s.score > 1 ? 's' : '') + where + '</span>'
     + status + '</div>';
 }
@@ -239,8 +242,8 @@ function renderCenter() {
   } else if (t) {
     inner += '<div class="pile">' + t.cards.map(c => faceHTML(c, 'span')).join('') + '</div>'
       + '<div class="cap"><b>' + name(t.by) + '</b> · ' + (t.count === 1 ? 'seul' : t.count === 2 ? 'paire' : t.count === 3 ? 'brelan' : 'carré')
-      + (t.count > 1 && t.rank !== M.JOKER ? ' de ' + M.RANK_WORD[t.rank] : '')
-      + (t.count > 1 ? (() => { const j = t.cards.filter(c => c.rank === M.JOKER).length; return j ? ' avec ' + (j === 1 ? 'un Joker' : 'deux Jokers') : ''; })() : '') + '</div>';
+      + (t.count > 1 ? (t.rank === M.JOKER ? ' de Jokers' : ' de ' + M.RANK_WORD[t.rank]) : '')
+      + (t.count > 1 && t.rank !== M.JOKER ? (() => { const j = t.cards.filter(c => c.rank === M.JOKER).length; return j ? ' avec ' + (j === 1 ? 'un Joker' : 'deux Jokers') : ''; })() : '') + '</div>';
   } else if (V.shown && V.shown.cut) {
     inner += '<div class="pile faded">' + V.shown.cards.map(c => faceHTML(c, 'span')).join('') + '</div>'
       + '<div class="cap">Table balayée par <b>' + name(V.shown.by) + '</b></div>';
@@ -290,11 +293,16 @@ function renderHand() {
   $('passBtn').hidden = V.status === 'exchange';
   $('passBtn').disabled = !(mine && V.table);
   $('passBtn').classList.toggle('hint-pulse', !!stuck);
+  const done = V.status === 'play' && V.hand.length === 0;
+  $('specBtn').hidden = !done;
+  $('specBtn').textContent = V.spec ? 'Mode spectateur : activé' : 'Mode spectateur : désactivé';
+  $('specBtn').setAttribute('aria-pressed', String(!!V.spec));
+  if (done && V.spec !== wantSpec) send({ t: 'spec', on: wantSpec });
   const h = $('hint');
   if (V.status === 'exchange') { h.textContent = exchangeHint(); h.className = 'hint' + (giving ? ' go' : ''); }
   else if (V.status !== 'play') { h.textContent = ''; h.className = 'hint'; }
   else if (!mine) {
-    h.textContent = V.hand.length === 0 ? 'Tu as fini. Les autres jouent encore.' : 'Au tour de ' + V.seats[V.current].name + '…';
+    h.textContent = V.hand.length === 0 ? (V.seats[V.you].pos === V.n - 1 ? 'Tu n’as pas gardé ton titre de Magnat : tu finis dernier et tu ne joues plus.' : 'Tu as fini. Les autres jouent encore.') + (V.spec ? '' : ' Active le mode spectateur pour voir leurs cartes.') : 'Au tour de ' + V.seats[V.current].name + '…';
     h.className = 'hint';
   } else if (stuck) { h.textContent = 'Aucun coup possible. Passe ton tour.'; h.className = 'hint go'; }
   else { h.textContent = needText(); h.className = 'hint go'; }
@@ -337,7 +345,7 @@ $('hand').addEventListener('click', e => {
   const J = M.JOKER, limit = t ? t.count : 4;
   const cur = sel.map(i => V.hand.find(x => x.id === i)).filter(Boolean);
   const real = cur.filter(x => x.rank !== J), jk = cur.length - real.length;
-  const lone = t && t.rank === J;
+  const lone = t && t.rank === J && t.count === 1;
   if (sel.includes(id)) {
     sel = sel.filter(x => x !== id);
   } else if (lone) {
@@ -347,7 +355,7 @@ $('hand').addEventListener('click', e => {
   } else if (c.rank === J) {
     if (real.length && jk < 2 && cur.length < limit) sel.push(id);
     else if (!real.length && !cur.length) sel = [id];
-    else if (!real.length && cur.length < limit && jk < 1) sel.push(id);
+    else if (!real.length && cur.length < limit && jk < 2) sel.push(id);
     else sel = [id];
   } else if (!real.length && cur.length && cur.length < limit) {
     sel.push(id);
@@ -373,6 +381,10 @@ $('playBtn').addEventListener('click', () => {
   send({ t: 'play', ids: cards.map(c => c.id) });
   sel = [];
 });
+$('specBtn').addEventListener('click', () => {
+  wantSpec = !(V && V.spec); store('magnat-spec', wantSpec ? '1' : '0');
+  send({ t: 'spec', on: wantSpec });
+});
 $('passBtn').addEventListener('click', () => {
   if (!V || V.status !== 'play' || V.current !== V.you || !V.table) return;
   $('playBtn').disabled = true; $('passBtn').disabled = true;
@@ -391,7 +403,7 @@ function renderOverlay() {
   if (V.status === 'roundover') {
     html = '<h2 id="ovTitle">Manche ' + V.round + ' terminée</h2><ol>'
       + r.finished.map((p, i) => '<li><span class="pos">' + ORD[i] + '</span><span class="who">' + esc(V.seats[p].name) + '</span><span class="role">' + M.roleName(n, i) + '</span><span class="pts">+' + r.gained[i] + '</span></li>').join('')
-      + '</ol>' + (r.demoted != null ? '<div class="total">' + esc(V.seats[r.demoted].name) + ' n’a pas gardé son titre de Magnat : il sera dernier à la prochaine manche.</div>' : '')
+      + '</ol>' + (r.demoted != null ? '<div class="total">' + esc(V.seats[r.demoted].name) + ' n’a pas gardé son titre de Magnat : éliminé, il finit dernier.</div>' : '')
       + '<div class="total">Points : ' + V.seats.map(s => esc(s.name) + ' ' + s.score).join(' · ') + '</div>'
       + '<div class="btnrow"><button class="btn primary" id="ovNext" type="button">Manche suivante</button></div>';
   } else {

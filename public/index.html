@@ -54,11 +54,12 @@
         <li>Du plus faible au plus fort : 3, 4 … Roi, As, 2, puis le Joker.</li>
         <li>Tu joues une carte, une paire, un brelan ou un carré. Les suivants jouent autant de cartes, de valeur plus forte, ou passent. Si tout le monde passe, le dernier à avoir joué rouvre la table.</li>
         <li>Un 8 coupe : la table est balayée et son auteur rejoue.</li>
-        <li>Le Joker seul est la carte la plus forte : seul le 3 de pique le bat, et il balaie aussi la table. Le Joker remplace aussi n'importe quelle carte d'un groupe : 5 + Joker = paire de 5, 4 + 4 + Joker + Joker = carré de 4, donc révolution.</li>
+        <li>Le Joker seul est la carte la plus forte : seul le 3 de pique le bat, et il balaie aussi la table. Deux Jokers forment la paire la plus forte, même en révolution. Le Joker remplace aussi n'importe quelle carte d'un groupe : 5 + Joker = paire de 5, 4 + 4 + Joker + Joker = carré de 4, donc révolution.</li>
         <li>Un carré déclenche une révolution : la hiérarchie s'inverse jusqu'à la fin de la manche. Un second carré la remet à l'endroit.</li>
         <li>À partir de la 2e manche, les cartes s'échangent : le dernier donne ses 2 meilleures cartes au premier, qui lui en rend 2 de son choix. L'avant-dernier donne sa meilleure carte au deuxième, qui lui en rend 1 de son choix.</li>
         <li>À la 1re manche, celui qui a la Dame de cœur ouvre. Ensuite, c'est le dernier de la manche précédente.</li>
-        <li>Le Magnat doit le rester : s'il ne finit pas premier à la manche suivante, il devient dernier pour la manche d'après.</li>
+        <li>Le Magnat doit le rester : si un autre joueur finit avant lui à la manche suivante, il est éliminé, finit dernier et ne joue plus (il peut regarder les autres en mode spectateur).</li>
+        <li>Quand tu as fini ta main, tu peux activer le mode spectateur pour voir les cartes des autres joueurs.</li>
         <li>La manche s'arrête quand il ne reste qu'un joueur avec des cartes. Points par place : à 4 joueurs 30, 20, 10, 0 ; à 5 joueurs 40, 30, 20, 10, 0 ; à 6 joueurs 50, 40, 30, 20, 10, 0.</li>
       </ul>
     </details>
@@ -141,6 +142,7 @@
       <div class="actions">
         <button class="btn primary" id="playBtn" type="button">Jouer</button>
         <button class="btn" id="passBtn" type="button">Passer</button>
+        <button class="btn" id="specBtn" type="button" hidden></button>
       </div>
     </section>
   </section>
