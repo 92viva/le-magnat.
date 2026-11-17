@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0d1822">
+<meta name="theme-color" content="#0a0a0a">
 <title>Le Magnat</title>
 <link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,500..800&family=Instrument+Sans:wght@400..700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -27,6 +27,14 @@
     <div class="panel-block">
       <label class="field" for="name">Ton pseudo</label>
       <input id="name" class="input" type="text" maxlength="16" autocomplete="nickname" placeholder="Ex. Léa">
+      <div class="avpick">
+        <span id="avHome"></span>
+        <div class="btns">
+          <button class="btn small" id="avBtn" type="button">Ma photo</button>
+          <button class="btn small" id="avDel" type="button" hidden>Sans photo</button>
+        </div>
+        <input id="avFile" type="file" accept="image/*" hidden>
+      </div>
     </div>
     <div class="grid2">
       <form class="panel-block" id="createForm">
@@ -133,7 +141,12 @@
 
     <section class="me" id="me" aria-label="Ta main">
       <div class="mehead">
-        <span class="nm" id="meName"></span>
+        <span id="meAv"></span>
+        <div class="mebubble">
+          <span class="nm" id="meName"></span>
+          <span class="rl" id="meRole"></span>
+          <span class="cnt" id="meCnt"></span>
+        </div>
         <span class="meta" id="meMeta"></span>
       </div>
       <div class="hint" id="hint" aria-live="polite"></div>
@@ -152,6 +165,7 @@
 <div class="overlay" id="overlay" hidden role="dialog" aria-modal="true" aria-labelledby="ovTitle">
   <div class="panel" id="panel"></div>
 </div>
+<div id="splash" class="splash" hidden aria-hidden="true"><div class="band"><div class="big" id="splashTitle"></div><div class="small" id="splashSub"></div></div></div>
 <div id="toast" class="toast" hidden role="status"></div>
 
 <script src="/engine.js"></script>

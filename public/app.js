@@ -23,7 +23,67 @@ let sel = [];            // ids des cartes sélectionnées
 let ws = null, backoff = 1000, pingTimer = null, replaced = false;
 let queue = [];          // création / jonction demandées avant l'ouverture de la connexion
 let wantSpec = load('magnat-spec') === '1';   // préférence : mode spectateur quand j'ai fini
-let shownOverlay = '';   // pour ne donner le focus à la fenêtre qu'une fois
+let shownOverlay = '';
+const AV = {};                 // id de photo -> data URL (envoyées à part de l'état)
+let avSentFor = '';            // table pour laquelle ma photo enregistrée a déjà été envoyée   // pour ne donner le focus à la fenêtre qu'une fois
+
+// ---------- Annonces plein écran ----------
+let splashTimer = null;
+function showSplash(tone, title, sub) {
+  const el = $('splash');
+  el.className = 'splash tone-' + tone;
+  $('splashTitle').textContent = title;
+  $('splashSub').textContent = sub || '';
+  el.hidden = false;
+  void el.offsetWidth;                  // relance l'animation
+  el.classList.add('go');
+  clearTimeout(splashTimer);
+  splashTimer = setTimeout(() => { el.hidden = true; el.classList.remove('go'); }, 2200);
+}
+if (/[?&]debug=1/.test(location.search)) window.__splash = showSplash;
+function announce(prev, cur) {
+  if (!prev || !cur || prev.code !== cur.code || prev.round !== cur.round || prev.status !== 'play' || cur.status !== 'play') return;
+  if (!prev.rev && cur.rev) showSplash('rev', 'Révolution', 'La hiérarchie des cartes s’inverse');
+  else if (prev.rev && !cur.rev) showSplash('counter', 'Contre-révolution', 'La hiérarchie repart à l’endroit');
+  const a = prev.seats[prev.you], b = cur.seats[cur.you];
+  if (a && b && a.pos < 0 && b.pos >= 0 && cur.hand.length === 0) {
+    const role = M.roleName(cur.n, b.pos);
+    const lost = b.pos === cur.n - 1;
+    showSplash(b.pos === 0 ? 'gold' : lost ? 'lost' : 'win', role, lost ? 'Dernier : tu ne joues plus' : ORD[b.pos] + ' à finir');
+  }
+}
+
+// ---------- Photos de profil ----------
+const AV_OK = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/]+={0,2}$/;
+const CROWN = '<svg class="crown" viewBox="0 0 64 46" aria-hidden="true"><path d="M5 36 9 9l15 14L32 4l8 19L55 9l4 27z" fill="#ffd24a" stroke="#0a0a0a" stroke-width="3" stroke-linejoin="round"/><rect x="5" y="36" width="54" height="7" fill="#ffd24a" stroke="#0a0a0a" stroke-width="3" stroke-linejoin="round"/><circle cx="9" cy="8" r="3.5" fill="#e60012" stroke="#0a0a0a" stroke-width="2"/><circle cx="32" cy="3.5" r="3.5" fill="#e60012" stroke="#0a0a0a" stroke-width="2"/><circle cx="55" cy="8" r="3.5" fill="#e60012" stroke="#0a0a0a" stroke-width="2"/></svg>';
+function hueOf(name) { let h = 0; for (const ch of String(name)) h = (h * 31 + ch.charCodeAt(0)) % 360; return h; }
+function avatarHTML(name, data, bot, crown) {
+  const ok = data && AV_OK.test(data);
+  const face = ok ? '<img src="' + data + '" alt="">' : esc(bot ? '♣' : (String(name).trim().charAt(0) || '?').toUpperCase());
+  return '<span class="av' + (bot ? ' bot' : '') + '" style="--h:' + hueOf(name) + '"><span class="face">' + face + '</span>' + (crown ? CROWN : '') + '</span>';
+}
+function seatAvatar(i, crown) {
+  const s = V.seats[i];
+  return avatarHTML(s.name, s.av && AV[s.av], s.bot, crown);
+}
+async function makeAvatar(file) {
+  if (!file || !/^image\//.test(file.type)) throw new Error('Choisis une image.');
+  if (file.size > 12 * 1024 * 1024) throw new Error('Image trop grosse.');
+  const bmp = await createImageBitmap(file);
+  const S = 160, cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const m = Math.min(bmp.width, bmp.height);
+  cv.getContext('2d').drawImage(bmp, (bmp.width - m) / 2, (bmp.height - m) / 2, m, m, 0, 0, S, S);
+  let q = 0.82, data;
+  do { data = cv.toDataURL('image/jpeg', q); q -= 0.1; } while (data.length > 21500 && q > 0.2);
+  if (!AV_OK.test(data) || data.length > 24000) throw new Error('Impossible de réduire cette image.');
+  return data;
+}
+function renderAvHome() {
+  const saved = load('magnat-avatar');
+  $('avHome').innerHTML = avatarHTML(myName() || '?', saved, false, false);
+  $('avDel').hidden = !saved;
+}
 
 // ---------- Connexion ----------
 function connect() {
@@ -63,10 +123,19 @@ document.addEventListener('visibilitychange', () => {
 
 function onServer(m) {
   switch (m.t) {
-    case 'state':
+    case 'state': {
+      const prevV = V;
       V = m; store('magnat-room', m.code);
+      announce(prevV, V);
+      { const mine = V.seats[V.you], saved = load('magnat-avatar');      // envoie ma photo enregistrée une fois par table
+        if (mine && !mine.av && saved && avSentFor !== V.code) { avSentFor = V.code; send({ t: 'avatar', data: saved }); } }
       sel = sel.filter(id => V.hand.some(c => c.id === id));
       if (!(V.status === 'play' && V.current === V.you) && !needGive()) sel = [];
+      render();
+      break;
+    }
+    case 'avatars':
+      for (const x of (m.list || [])) if (Number.isInteger(x.id) && typeof x.data === 'string' && AV_OK.test(x.data)) AV[x.id] = x.data;
       render();
       break;
     case 'error':
@@ -78,9 +147,9 @@ function onServer(m) {
       }
       break;
     case 'kicked':
-      V = null; store('magnat-room', null); toast('L’hôte t’a retiré de la table.'); render(); break;
+      V = null; avSentFor = ''; store('magnat-room', null); toast('L’hôte t’a retiré de la table.'); render(); break;
     case 'left':
-      V = null; store('magnat-room', null); render(); break;
+      V = null; avSentFor = ''; store('magnat-room', null); render(); break;
   }
 }
 
@@ -103,6 +172,20 @@ function needName() {
 $('name').value = load('magnat-name') || '';
 const hashCode = (location.hash || '').replace('#', '').toUpperCase();
 if (/^[A-Z]{4}$/.test(hashCode)) $('code').value = hashCode;
+
+$('avFile').addEventListener('change', async e => {
+  const f = e.target.files && e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  try {
+    const data = await makeAvatar(f);
+    store('magnat-avatar', data); renderAvHome();
+    if (V) send({ t: 'avatar', data });
+  } catch (er) { toast(er.message || 'Photo impossible à lire.'); }
+});
+$('avBtn').addEventListener('click', () => $('avFile').click());
+$('avDel').addEventListener('click', () => { store('magnat-avatar', null); renderAvHome(); if (V) send({ t: 'avatar', data: null }); });
+$('name').addEventListener('input', renderAvHome);
+renderAvHome();
 
 $('createForm').addEventListener('submit', e => {
   e.preventDefault();
@@ -132,7 +215,8 @@ function renderLobby() {
       + (i === V.you ? '<span class="tag">Toi</span>' : '')
       + (!s.connected ? '<span class="tag off">Absent</span>' : '');
     const kick = amHost && i !== V.you ? '<button class="btn small" type="button" data-kick="' + i + '">Retirer</button>' : '';
-    return '<li class="seatrow"><span class="who">' + esc(s.name) + '</span><span class="tags">' + tags + '</span>' + kick + '</li>';
+    const photo = i === V.you ? '<button class="btn small" type="button" data-avpick="1">Photo</button>' + (s.av ? '<button class="btn small" type="button" data-avdel="1">Sans photo</button>' : '') : '';
+    return '<li class="seatrow">' + seatAvatar(i) + '<span class="who">' + esc(s.name) + '</span><span class="tags">' + tags + '</span>' + photo + kick + '</li>';
   }).join('');
   $('hostCtl').hidden = !amHost;
   $('addBot').disabled = V.n >= 6;
@@ -147,6 +231,8 @@ function renderLobby() {
     : amHost ? 'La partie peut commencer.' : 'En attente de ' + hostName + '…';
 }
 $('seatList').addEventListener('click', e => {
+  if (e.target.closest('[data-avpick]')) return $('avFile').click();
+  if (e.target.closest('[data-avdel]')) { store('magnat-avatar', null); renderAvHome(); return send({ t: 'avatar', data: null }); }
   const b = e.target.closest('[data-kick]'); if (!b) return;
   send({ t: 'kick', seat: Number(b.dataset.kick) });
 });
@@ -206,24 +292,42 @@ function needText() {
   const q = t.count === 1 ? 'une carte' : t.count + ' cartes de même valeur';
   return 'Il faut ' + q + ' plus forte' + (t.count > 1 ? 's' : '') + ' que ' + M.rankWord(t.rank, t.count > 1) + ', ou passer.';
 }
-function seatHTML(i) {
+function roleKind(pos) {
+  if (pos == null || pos < 0) return '';
+  if (pos === 0) return 'top';
+  if (pos === V.n - 1) return 'bottom';
+  if (pos === 1) return 'rich';
+  if (pos === V.n - 2) return 'poor';
+  return 'mid';
+}
+const PCOL = ['#f5a300', '#e0148c', '#1f6bff', '#00b894', '#8a4dff', '#ff5a36'];
+function seatHTML(i, k) {
   const s = V.seats[i];
   const exWait = V.status === 'exchange' && V.exchange && V.exchange.pairs.some(p => p.rich === i && !p.done);
   const turn = (V.status === 'play' && V.current === i) || exWait;
-  const backs = Math.min(s.count, 6);
   let status;
   if (s.pos >= 0) status = '<span class="chip' + (s.pos === V.n - 1 ? ' last' : '') + '">' + ORD[s.pos] + ' · ' + M.roleName(V.n, s.pos) + '</span>';
   else if (turn) status = '<span class="now">' + (exWait ? 'Choisit ses cartes…' : 'Réfléchit…') + '</span>';
   else if (s.passed) status = '<span class="now quiet">A passé</span>';
-  else status = '<span class="now"></span>';
+  else status = '';
   const where = (s.bot ? ' · bot' : '') + (!s.connected ? ' · absent' : '');
-  return '<div class="seat' + (turn ? ' turn' : '') + (!s.connected ? ' away' : '') + '">'
-    + '<span class="nm">' + esc(s.name) + '</span>'
+  const role = s.role >= 0 ? s.role : -1;
+  const done = s.pos >= 0 && s.count === 0;
+  const d = s.av && AV[s.av];
+  const pic = d && AV_OK.test(d) ? '<img src="' + d + '" alt="">' : '<span class="ini">' + esc(s.bot ? '♣' : (String(s.name).trim().charAt(0) || '?').toUpperCase()) + '</span>';
+  return '<div class="seat' + (turn ? ' turn' : '') + (!s.connected ? ' away' : '') + '" data-role="' + roleKind(role) + '" style="--pc:' + PCOL[i % PCOL.length] + ';--k:' + k + '">'
+    + '<div class="pimg"><span class="rays"></span>' + pic + '</div>'
+    + '<div class="bubble">'
+    + (role === 0 ? CROWN : '')
+    + (role >= 0 ? '<span class="rl">' + M.roleName(V.n, role) + '</span>' : '')
+    + (done ? '<span class="cnt done">Terminé</span>' : '<span class="cnt"><small>Cartes restantes</small><b>' + s.count + '</b></span>')
+    + '<span class="meta">' + s.score + ' pt' + (s.score > 1 ? 's' : '') + where + '</span>'
+    + '</div>'
     + (V.spectate && V.spectate[i] && V.spectate[i].length
-      ? '<span class="opphand">' + V.spectate[i].slice().sort((x, y) => M.strength(x.rank, V.rev) - M.strength(y.rank, V.rev)).map(c => faceHTML(c, 'span')).join('') + '</span>'
-      : '<span class="stack" aria-hidden="true">' + '<span class="mini"></span>'.repeat(backs) + '</span>')
-    + '<span class="meta">' + (s.pos >= 0 && s.count === 0 ? 'Terminé' : s.count + ' carte' + (s.count > 1 ? 's' : '')) + ' · ' + s.score + ' pt' + (s.score > 1 ? 's' : '') + where + '</span>'
-    + status + '</div>';
+      ? '<span class="opphand">' + V.spectate[i].slice().sort((x, y) => M.strength(x.rank, V.rev) - M.strength(y.rank, V.rev)).map(c => faceHTML(c, 'span')).join('') + '</span>' : '')
+    + '<span class="nmtag">' + esc(s.name) + '</span>'
+    + (status ? '<span class="st">' + status + '</span>' : '')
+    + '</div>';
 }
 function renderLadder() {
   const order = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
@@ -232,15 +336,18 @@ function renderLadder() {
     + '<li class="jk" title="Joker">★</li>';
   $('gRev').hidden = !V.rev;
 }
+let lastPileKey = '';
 function renderCenter() {
   let inner = '';
   const t = V.table;
+  const pileKey = t ? t.cards.map(c => c.id).join(',') : '';
+  const fresh = pileKey !== lastPileKey; lastPileKey = pileKey;
   const name = i => esc(V.seats[i] ? V.seats[i].name : '');
   if (V.status === 'exchange' && V.exchange) {
     const waiting = V.exchange.pairs.filter(p => !p.done).map(p => '<b>' + name(p.rich) + '</b> choisit ' + p.k + ' carte' + (p.k > 1 ? 's' : '') + ' pour ' + name(p.poor));
     inner += '<div class="empty-table">Échange de cartes</div><div class="cap">' + (waiting.join(' · ') || 'Échanges terminés') + '</div>';
   } else if (t) {
-    inner += '<div class="pile">' + t.cards.map(c => faceHTML(c, 'span')).join('') + '</div>'
+    inner += '<div class="pile' + (fresh ? ' fresh' : '') + '">' + t.cards.map(c => faceHTML(c, 'span')).join('') + '</div>'
       + '<div class="cap"><b>' + name(t.by) + '</b> · ' + (t.count === 1 ? 'seul' : t.count === 2 ? 'paire' : t.count === 3 ? 'brelan' : 'carré')
       + (t.count > 1 ? (t.rank === M.JOKER ? ' de Jokers' : ' de ' + M.RANK_WORD[t.rank]) : '')
       + (t.count > 1 && t.rank !== M.JOKER ? (() => { const j = t.cards.filter(c => c.rank === M.JOKER).length; return j ? ' avec ' + (j === 1 ? 'un Joker' : 'deux Jokers') : ''; })() : '') + '</div>';
@@ -269,21 +376,46 @@ function exchangeHint() {
   return 'Tu es ' + (m.k === 2 ? 'Misérable' : 'Pauvre') + ' : tu donnes ' + shortList(m.gave) + ' à ' + partner + '. '
     + (m.done ? 'Tu reçois ' + shortList(m.received) + '.' : partner + ' choisit les cartes à te rendre…');
 }
+let lastDealKey = '';
+// Éventail : les cartes se chevauchent pour tenir sur la largeur, légèrement inclinées autour du centre.
+function layoutFan() {
+  const h = $('hand'), cards = h.children, n = cards.length;
+  if (!n) return;
+  const cw = cards[0].offsetWidth, W = h.clientWidth - 24;
+  const step = n > 1 ? Math.min(cw * 0.72, (W - cw) / (n - 1)) : 0;
+  const span = Math.min(24, n * 2.2), per = n > 1 ? span / (n - 1) : 0;
+  h.style.setProperty('--ov', (step - cw) + 'px');
+  for (let i = 0; i < n; i++) {
+    const d = i - (n - 1) / 2;
+    cards[i].style.setProperty('--rot', (d * per).toFixed(2) + 'deg');
+    cards[i].style.setProperty('--lift', (d * d * cw * 0.011).toFixed(1) + 'px');
+  }
+}
+window.addEventListener('resize', () => { if (V && V.status !== 'lobby') layoutFan(); });
 function renderHand() {
   const mine = V.status === 'play' && V.current === V.you;
   const giving = needGive();
   computePI();
   const recv = new Set(((V.exchange && V.exchange.mine && V.exchange.mine.received) || []).map(c => c.id));
-  $('hand').innerHTML = sortedHand().map(c => {
+  const dealKey = V.round + ':' + (V.status === 'exchange' ? 'x' : 'p');
+  const deal = V.hand.length > 0 && dealKey !== lastDealKey; if (V.hand.length > 0) lastDealKey = dealKey;
+  $('hand').classList.toggle('deal', deal);
+  if (deal) setTimeout(() => $('hand').classList.remove('deal'), 1400);
+  $('hand').innerHTML = sortedHand().map((c, idx) => {
     let ex = '';
     if (sel.includes(c.id)) ex = ' sel'; else if (mine && !cardPlayable(c)) ex = ' dim';
     if (recv.has(c.id)) ex += ' new';
-    return faceHTML(c, 'button', ex, 'data-id="' + c.id + '" aria-pressed="' + sel.includes(c.id) + '"' + ((mine || giving) ? '' : ' aria-disabled="true"'));
+    return faceHTML(c, 'button', ex, 'data-id="' + c.id + '" style="--i:' + idx + '" aria-pressed="' + sel.includes(c.id) + '"' + ((mine || giving) ? '' : ' aria-disabled="true"'));
   }).join('');
+  layoutFan();
   $('me').classList.toggle('turn', mine || giving);
   const me = V.seats[V.you];
+  $('meAv').innerHTML = seatAvatar(V.you);
   $('meName').textContent = me.name;
-  $('meMeta').textContent = (me.pos >= 0 ? ORD[me.pos] + ' · ' + M.roleName(V.n, me.pos) + ' · ' : V.hand.length + ' carte' + (V.hand.length > 1 ? 's' : '') + ' · ') + me.score + ' pt' + (me.score > 1 ? 's' : '');
+  $('meCnt').innerHTML = me.pos >= 0 && V.hand.length === 0 ? '<small>Terminé</small>' : '<small>Cartes restantes</small><b>' + V.hand.length + '</b>';
+  $('meRole').textContent = me.role >= 0 ? M.roleName(V.n, me.role) : '';
+  $('meRole').dataset.role = roleKind(me.role);
+  $('meMeta').textContent = (me.pos >= 0 ? ORD[me.pos] + ' · ' + M.roleName(V.n, me.pos) + ' · ' : '') + me.score + ' pt' + (me.score > 1 ? 's' : '');
   const cards = sel.map(id => V.hand.find(c => c.id === id)).filter(Boolean);
   const ok = giving ? sel.length === V.exchange.mine.k : (mine && M.validate(cards, V.table, V.rev).ok);
   const stuck = mine && V.table && PI.moves && PI.moves.length === 0;
@@ -315,6 +447,7 @@ function renderHand() {
       : 'Échange : tu as donné ' + shortList(xm.gave) + ' et reçu ' + shortList(xm.received) + '.';
   } else ei.hidden = true;
 }
+let lastEnterKey = '';
 function renderGame() {
   $('gRound').textContent = V.round;
   $('gRounds').textContent = V.rounds;
@@ -323,7 +456,9 @@ function renderGame() {
   const order = [];
   for (let k = 1; k < V.n; k++) order.push((V.you + k) % V.n);
   $('opps').dataset.count = order.length;
-  $('opps').innerHTML = order.map(seatHTML).join('');
+  $('opps').innerHTML = order.map((i, k) => seatHTML(i, k)).join('');
+  const enterKey = V.code + ':' + V.round;
+  if (enterKey !== lastEnterKey) { lastEnterKey = enterKey; $('opps').classList.add('enter'); $('me').classList.add('enter'); setTimeout(() => { $('opps').classList.remove('enter'); $('me').classList.remove('enter'); }, 1300); }
   renderCenter();
   renderHand();
 }
@@ -402,17 +537,24 @@ function renderOverlay() {
   let html;
   if (V.status === 'roundover') {
     html = '<h2 id="ovTitle">Manche ' + V.round + ' terminée</h2><ol>'
-      + r.finished.map((p, i) => '<li><span class="pos">' + ORD[i] + '</span><span class="who">' + esc(V.seats[p].name) + '</span><span class="role">' + M.roleName(n, i) + '</span><span class="pts">+' + r.gained[i] + '</span></li>').join('')
+      + r.finished.map((p, i) => '<li><span class="pos">' + ORD[i] + '</span>' + seatAvatar(p) + '<span class="who">' + esc(V.seats[p].name) + '</span><span class="role">' + M.roleName(n, i) + '</span><span class="pts">+' + r.gained[i] + '</span></li>').join('')
       + '</ol>' + (r.demoted != null ? '<div class="total">' + esc(V.seats[r.demoted].name) + ' n’a pas gardé son titre de Magnat : éliminé, il finit dernier.</div>' : '')
       + '<div class="total">Points : ' + V.seats.map(s => esc(s.name) + ' ' + s.score).join(' · ') + '</div>'
       + '<div class="btnrow"><button class="btn primary" id="ovNext" type="button">Manche suivante</button></div>';
   } else {
-    const order = V.seats.map((s, i) => i).sort((a, b) => V.seats[b].score - V.seats[a].score);
+    const order = V.seats.map((s, i) => i).sort((x, y) => V.seats[y].score - V.seats[x].score);
     const top = V.seats[order[0]].score;
     const winners = order.filter(i => V.seats[i].score === top);
-    const title = winners.length > 1 ? 'Égalité en tête' : (winners[0] === V.you ? 'Tu es le Magnat !' : esc(V.seats[winners[0]].name) + ' est le Magnat');
-    html = '<h2 id="ovTitle">' + title + '</h2><ol>'
-      + order.map((p, k) => '<li><span class="pos">' + (k + 1) + '</span><span class="who">' + esc(V.seats[p].name) + '</span><span class="role">' + (V.seats[p].score === top ? 'En tête' : '') + '</span><span class="pts">' + V.seats[p].score + ' pts</span></li>').join('')
+    const verdict = winners.length > 1 ? 'Égalité en tête' : (winners[0] === V.you ? 'Tu es le Magnat !' : esc(V.seats[winners[0]].name) + ' est le Magnat');
+    html = '<h2 id="ovTitle">Classement final</h2>'
+      + '<div class="final"><div class="winner"><div class="winners">'
+      + winners.map(p => '<div class="one">' + seatAvatar(p, true) + '<div class="big">' + esc(V.seats[p].name) + '</div><div class="pts">' + top + ' pts</div></div>').join('')
+      + '</div><div class="cap">' + verdict + '</div></div></div>'
+      + '<ol class="final-list">'
+      + order.map(p => {
+        const sc = V.seats[p].score, place = order.findIndex(q => V.seats[q].score === sc) + 1;
+        return '<li' + (sc === top ? ' class="first"' : '') + '><span class="pos">' + place + '</span>' + seatAvatar(p) + '<span class="who">' + esc(V.seats[p].name) + '</span><span class="role">' + (sc === top ? 'Magnat' : '') + '</span><span class="pts">' + sc + ' pts</span></li>';
+      }).join('')
       + '</ol><div class="btnrow"><button class="btn primary" id="ovAgain" type="button">Rejouer</button><button class="btn" id="ovLeave" type="button">Quitter</button></div>';
   }
   if (key === shownOverlay) return;      // déjà affichée : ne pas la reconstruire
