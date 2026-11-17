@@ -24,6 +24,12 @@ const MIME = {
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.txt': 'text/plain; charset=utf-8',
   '.ico': 'image/x-icon'
 };
 const CSP = [
@@ -56,7 +62,7 @@ function serveStatic(req, res) {
     if (err) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Introuvable'); }
     res.writeHead(200, {
       'Content-Type': MIME[path.extname(file)] || 'application/octet-stream',
-      'Cache-Control': 'no-cache',
+      'Cache-Control': /\.(png|webp|jpe?g|gif)$/.test(file) ? 'public, max-age=300' : 'no-cache',
       'Content-Security-Policy': CSP,
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'no-referrer'
