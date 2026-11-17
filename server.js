@@ -38,6 +38,9 @@ const CSP = [
 ].join('; ');
 
 const rooms = new Map();
+let AVID = 0;
+const AV_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/]+={0,2}$/;
+const AV_MAX = 24000;      // taille max d'une photo (texte base64), le navigateur la réduit à 160 px
 
 // ---------- HTTP : fichiers statiques ----------
 function serveStatic(req, res) {
@@ -63,7 +66,7 @@ function serveStatic(req, res) {
 }
 
 const server = http.createServer(serveStatic);
-const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 4096 });
+const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 40000 });
 
 // ---------- Tables ----------
 function makeCode() {
@@ -110,6 +113,8 @@ function view(room, idx) {
       name: s.name, bot: !!s.bot, connected: s.bot ? true : !!s.connected,
       count: inGame ? S.hands[i].length : 0,
       score: room.scores[i] || 0,
+      av: s.avid || 0,
+      role: room.roles ? room.roles.indexOf(i) : -1,
       pos: inGame ? (S.out && S.out.includes(i) ? room.seats.length - 1 : S.finished.indexOf(i)) : -1,
       passed: inGame && S.passes.includes(i)
     })),
@@ -142,6 +147,13 @@ function broadcast(room) {
   room.last = Date.now();
   room.seats.forEach((s, i) => { if (!s.bot && s.ws) send(s.ws, view(room, i)); });
 }
+// Les photos voyagent à part de l'état de jeu pour ne pas être renvoyées à chaque coup.
+function sendAvatars(room, ws, only) {
+  const list = room.seats.filter(s => s.avatar && (!only || only.includes(s))).map(s => ({ id: s.avid, data: s.avatar }));
+  if (!list.length) return;
+  if (ws) return send(ws, { t: 'avatars', list });
+  for (const s of room.seats) if (!s.bot && s.ws) send(s.ws, { t: 'avatars', list });
+}
 function destroyIfEmpty(room) {
   if (humans(room).length === 0) {
     clearTimeout(room.timer);
@@ -159,7 +171,7 @@ function ensureHost(room) {
 // ---------- Déroulement ----------
 function startGame(room) {
   room.scores = room.seats.map(() => 0);
-  room.round = 1; room.results = null; room.magnat = null; room.rank = null;
+  room.round = 1; room.results = null; room.magnat = null; room.rank = null; room.roles = null;
   startRound(room, null);
 }
 function S_magnat(room) { room.S.magnat = room.magnat == null ? null : room.magnat; }
@@ -172,6 +184,7 @@ function startRound(room, starter, prevOrder) {
     room.S.current = starter;
   }
   S_magnat(room);
+  room.roles = prevOrder ? prevOrder.slice() : null;      // rôles de la manche précédente, affichés pendant la manche
   room.shown = null; room.results = null; room.exchange = null;
   room.msg = 'Manche ' + room.round + ' : ' + room.seats[starter].name + ' ouvre'
     + (prevOrder ? ' (dernier de la manche précédente).' : ' (il a la Dame de cœur).');
@@ -352,6 +365,7 @@ function onMessage(conn, msg) {
       seat.ws = conn.ws; seat.connected = true;
       conn.room = room;
       broadcast(room);
+      sendAvatars(room, conn.ws);
       if (room.status === 'play' || room.status === 'exchange') schedule(room);
       return;
     }
@@ -359,7 +373,8 @@ function onMessage(conn, msg) {
     if (room.seats.length >= MAX_PLAYERS) return err(conn, 'full', 'La table est pleine (6 joueurs).');
     if (conn.room) detach(conn);
     addSeat(room, conn, msg.name);
-    return broadcast(room);
+    broadcast(room);
+    return sendAvatars(room, conn.ws);
   }
 
   const room = conn.room;
@@ -373,6 +388,14 @@ function onMessage(conn, msg) {
     case 'leave': {
       detach(conn);
       return send(conn.ws, { t: 'left' });
+    }
+    case 'avatar': {
+      const seat = room.seats[me];
+      if (msg.data == null) { seat.avatar = null; seat.avid = 0; return broadcast(room); }
+      if (typeof msg.data !== 'string' || msg.data.length > AV_MAX || !AV_RE.test(msg.data)) return err(conn, 'bad', 'Photo invalide ou trop lourde.');
+      seat.avatar = msg.data; seat.avid = ++AVID;
+      broadcast(room);
+      return sendAvatars(room, null, [seat]);
     }
     case 'spec': {
       room.seats[me].spec = !!msg.on;
@@ -474,7 +497,9 @@ wss.on('connection', ws => {
     }
     conn.tokens--;
     let msg;
-    try { msg = JSON.parse(data.toString()); } catch (e) { return; }
+    const raw = data.toString();
+    if (raw.length > 4096 && !raw.startsWith('{"t":"avatar"')) return;     // seules les photos sont volumineuses
+    try { msg = JSON.parse(raw); } catch (e) { return; }
     try { onMessage(conn, msg); } catch (e) { console.error('erreur de message:', e); err(conn, 'bad', 'Action impossible.'); }
   });
   ws.on('close', () => {
