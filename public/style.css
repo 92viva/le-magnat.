@@ -199,7 +199,8 @@ select:hover, .input:hover { border-color: var(--red-hi); }
 @keyframes panelIn { from { transform: translateY(-40px) skewX(-8deg); opacity: 0; } }
 .opps.enter .seat .bubble { animation: pop .4s cubic-bezier(.3, 1.6, .5, 1) both; animation-delay: calc(var(--k) * 90ms + 250ms); }
 @keyframes pop { from { transform: scale(.4); opacity: 0; } }
-.mini { width: 16px; aspect-ratio: 5/7; border: 1px solid #fff; margin-left: -9px; background: repeating-linear-gradient(135deg, var(--red) 0 3px, #0a0a0a 3px 6px); }
+.mini { width: 16px; aspect-ratio: 5/7; border: 1px solid #fff; margin-left: -9px; background: var(--back, repeating-linear-gradient(135deg, var(--red) 0 3px, #0a0a0a 3px 6px)); background-size: cover; background-position: center; }
+.seat .cnt .mini { margin: 0 2px 0 0; width: 22px; align-self: center; }
 .mini:first-child { margin-left: 0; }
 .chip { display: inline-block; padding: 1px 10px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; background: var(--red); color: #fff; transform: skewX(-9deg); }
 .chip.last { background: #444; }
@@ -356,3 +357,7 @@ select:hover, .input:hover { border-color: var(--red-hi); }
 .me.turn { animation: glow 1.4s ease-in-out infinite; }
 @keyframes glow { 50% { box-shadow: 6px 6px 0 var(--red), 0 0 0 2px var(--red-hi), 0 0 24px #e6001266; } }
 @media (prefers-reduced-motion: reduce) { .seat.turn, .opps.enter .seat, .opps.enter .seat .bubble, .hand.deal .card, .me.enter, .me.turn { animation: none; } }
+
+/* Cartes d'un thème : l'image remplace le dessin */
+.card.img { background-color: #0a0a0a; background-image: var(--img); background-size: cover; background-position: center; border-color: #0a0a0a; }
+.card.img .r, .card.img .s, .card.img::before { display: none; }

@@ -27,6 +27,51 @@ let shownOverlay = '';
 const AV = {};                 // id de photo -> data URL (envoyées à part de l'état)
 let avSentFor = '';            // table pour laquelle ma photo enregistrée a déjà été envoyée   // pour ne donner le focus à la fenêtre qu'une fois
 
+// ---------- Variables de style ----------
+// La politique de sécurité interdit les attributs style="" : les valeurs passent par data-vars, appliquées ici.
+function paint(el) {
+  if (el.nodeType !== 1) return;
+  const nodes = el.matches('[data-vars]') ? [el] : [];
+  nodes.push(...el.querySelectorAll('[data-vars]'));
+  for (const n of nodes) for (const kv of n.dataset.vars.split(';')) {
+    const i = kv.indexOf(':');
+    if (i > 0) n.style.setProperty(kv.slice(0, i).trim(), kv.slice(i + 1).trim());
+  }
+}
+new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) paint(n); }).observe(document.body, { childList: true, subtree: true });
+paint(document.body);
+
+// ---------- Cartes personnalisées ----------
+// Dépose tes images dans le dossier public/cartes/ (voir public/cartes/LISEZMOI.txt).
+// Une image par carte, formats jpg / jpeg / png / webp. Toute carte absente garde le dessin par défaut.
+const TH = {};
+const SUIT_FR = { S: 'pique', H: 'coeur', D: 'carreau', C: 'trefle' };
+const RANK_FR = { 11: 'valet', 12: 'dame', 13: 'roi', 14: 'as', 15: '2' };
+function themeKey(c) {
+  if (c.rank === M.JOKER) return 'joker-' + ((c.id % 2) + 1);
+  return SUIT_FR[c.suit] + '-' + (RANK_FR[c.rank] || c.rank);
+}
+function loadTheme() {
+  const exts = ['jpg', 'png', 'jpeg', 'webp'];
+  const keys = ['dos', 'joker-1', 'joker-2'];
+  for (const s of Object.values(SUIT_FR)) for (const r of ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'valet', 'dame', 'roi', 'as']) keys.push(s + '-' + r);
+  const tryExt = (k, i, done) => {
+    if (i >= exts.length) return done();
+    const url = '/cartes/' + k + '.' + exts[i];
+    const im = new Image();
+    im.onload = () => { TH[k] = url; done(); };
+    im.onerror = () => tryExt(k, i + 1, done);
+    im.src = url;
+  };
+  Promise.all(keys.map(k => new Promise(done => tryExt(k, 0, done)))).then(() => {
+    if (!TH['joker-2'] && TH['joker-1']) TH['joker-2'] = TH['joker-1'];
+    if (!TH['joker-1'] && TH['joker-2']) TH['joker-1'] = TH['joker-2'];
+    if (TH.dos) document.documentElement.style.setProperty('--back', 'url("' + TH.dos + '")');
+    if (V && V.status !== 'lobby') render();
+  });
+}
+loadTheme();
+
 // ---------- Annonces plein écran ----------
 let splashTimer = null;
 function showSplash(tone, title, sub) {
@@ -60,7 +105,7 @@ function hueOf(name) { let h = 0; for (const ch of String(name)) h = (h * 31 + c
 function avatarHTML(name, data, bot, crown) {
   const ok = data && AV_OK.test(data);
   const face = ok ? '<img src="' + data + '" alt="">' : esc(bot ? '♣' : (String(name).trim().charAt(0) || '?').toUpperCase());
-  return '<span class="av' + (bot ? ' bot' : '') + '" style="--h:' + hueOf(name) + '"><span class="face">' + face + '</span>' + (crown ? CROWN : '') + '</span>';
+  return '<span class="av' + (bot ? ' bot' : '') + '" data-vars="--h:' + hueOf(name) + '"><span class="face">' + face + '</span>' + (crown ? CROWN : '') + '</span>';
 }
 function seatAvatar(i, crown) {
   const s = V.seats[i];
@@ -254,10 +299,13 @@ $('copyLink').addEventListener('click', async () => {
 
 // ---------- Partie ----------
 function cardLabel(c) { return M.cardName(c); }
-function faceHTML(c, tag, extra, attrs) {
+function faceHTML(c, tag, extra, attrs, vars) {
   const red = (c.suit === 'H' || c.suit === 'D') ? ' red' : '';
   const jk = c.rank === M.JOKER ? ' joker' : '';
-  return '<' + tag + (tag === 'button' ? ' type="button"' : ' role="img"') + ' class="card' + red + jk + (extra || '') + '" ' + (attrs || '')
+  const url = TH[themeKey(c)];
+  const v = (vars || '') + (url ? (vars ? ';' : '') + "--img:url('" + url + "')" : '');
+  return '<' + tag + (tag === 'button' ? ' type="button"' : ' role="img"') + ' class="card' + red + jk + (url ? ' img' : '') + (extra || '') + '" ' + (attrs || '')
+    + (v ? ' data-vars="' + v + '"' : '')
     + ' aria-label="' + esc(cardLabel(c)) + '"><span class="r">' + M.RANK_LABEL[c.rank] + '</span><span class="s">' + M.SUITS[c.suit] + '</span></' + tag + '>';
 }
 function sortedHand() {
@@ -315,12 +363,12 @@ function seatHTML(i, k) {
   const done = s.pos >= 0 && s.count === 0;
   const d = s.av && AV[s.av];
   const pic = d && AV_OK.test(d) ? '<img src="' + d + '" alt="">' : '<span class="ini">' + esc(s.bot ? '♣' : (String(s.name).trim().charAt(0) || '?').toUpperCase()) + '</span>';
-  return '<div class="seat' + (turn ? ' turn' : '') + (!s.connected ? ' away' : '') + '" data-role="' + roleKind(role) + '" style="--pc:' + PCOL[i % PCOL.length] + ';--k:' + k + '">'
+  return '<div class="seat' + (turn ? ' turn' : '') + (!s.connected ? ' away' : '') + '" data-role="' + roleKind(role) + '" data-vars="--pc:' + PCOL[i % PCOL.length] + ';--k:' + k + '">'
     + '<div class="pimg"><span class="rays"></span>' + pic + '</div>'
     + '<div class="bubble">'
     + (role === 0 ? CROWN : '')
     + (role >= 0 ? '<span class="rl">' + M.roleName(V.n, role) + '</span>' : '')
-    + (done ? '<span class="cnt done">Terminé</span>' : '<span class="cnt"><small>Cartes restantes</small><b>' + s.count + '</b></span>')
+    + (done ? '<span class="cnt done">Terminé</span>' : '<span class="cnt"><span class="mini"></span><small>Cartes restantes</small><b>' + s.count + '</b></span>')
     + '<span class="meta">' + s.score + ' pt' + (s.score > 1 ? 's' : '') + where + '</span>'
     + '</div>'
     + (V.spectate && V.spectate[i] && V.spectate[i].length
@@ -405,7 +453,7 @@ function renderHand() {
     let ex = '';
     if (sel.includes(c.id)) ex = ' sel'; else if (mine && !cardPlayable(c)) ex = ' dim';
     if (recv.has(c.id)) ex += ' new';
-    return faceHTML(c, 'button', ex, 'data-id="' + c.id + '" style="--i:' + idx + '" aria-pressed="' + sel.includes(c.id) + '"' + ((mine || giving) ? '' : ' aria-disabled="true"'));
+    return faceHTML(c, 'button', ex, 'data-id="' + c.id + '" aria-pressed="' + sel.includes(c.id) + '"' + ((mine || giving) ? '' : ' aria-disabled="true"'), '--i:' + idx);
   }).join('');
   layoutFan();
   $('me').classList.toggle('turn', mine || giving);
