@@ -619,6 +619,7 @@ function renderOverlay() {
 // ---------- Rendu ----------
 function render() {
   const screen = !V ? 'home' : V.status === 'lobby' ? 'lobby' : 'game';
+  if (window.Music) Music.setActive(screen === 'game');
   $('home').hidden = screen !== 'home';
   $('lobby').hidden = screen !== 'lobby';
   $('game').hidden = screen !== 'game';
@@ -629,4 +630,12 @@ function render() {
 
 render();
 connect();
+})();
+
+// ---------- Musique de fond ----------
+(function () {
+  const b = document.getElementById('musicBtn'); if (!b || !window.Music) return;
+  const show = () => { b.textContent = Music.isOn() ? 'Musique : oui' : 'Musique : non'; b.setAttribute('aria-pressed', Music.isOn() ? 'true' : 'false'); };
+  b.addEventListener('click', () => { Music.setOn(!Music.isOn()); show(); });
+  show();
 })();
