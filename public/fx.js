@@ -23,7 +23,7 @@
   function loadCustom() {
     NAMES.forEach(n => {
       const tryExt = i => {
-        const exts = ['mp3', 'ogg', 'wav']; if (i >= exts.length) return;
+        const exts = ['mp3', 'm4a', 'ogg', 'wav']; if (i >= exts.length) return;
         fetch('/sons/' + n + '.' + exts[i]).then(r => r.ok && /audio|ogg|mpeg|wav/.test(r.headers.get('content-type') || '') ? r.arrayBuffer() : Promise.reject())
           .then(b => ctx.decodeAudioData(b)).then(buf => { custom[n] = buf; }).catch(() => tryExt(i + 1));
       };
