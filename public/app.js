@@ -94,6 +94,7 @@ function announce(prev, cur) {
   if (a && b && a.pos < 0 && b.pos >= 0 && cur.hand.length === 0) {
     const role = M.roleName(cur.n, b.pos);
     const lost = b.pos === cur.n - 1;
+    if (window.FX) FX.onFinish(b.pos, cur.n);
     showSplash(b.pos === 0 ? 'gold' : lost ? 'lost' : 'win', role, lost ? 'Dernier : tu ne joues plus' : ORD[b.pos] + ' à finir');
   }
 }
@@ -172,6 +173,7 @@ function onServer(m) {
       const prevV = V;
       V = m; store('magnat-room', m.code);
       announce(prevV, V);
+      if (window.FX) FX.onState(prevV, V);
       { const mine = V.seats[V.you], saved = load('magnat-avatar');      // envoie ma photo enregistrée une fois par table
         if (mine && !mine.av && saved && avSentFor !== V.code) { avSentFor = V.code; send({ t: 'avatar', data: saved }); } }
       sel = sel.filter(id => V.hand.some(c => c.id === id));
@@ -637,5 +639,13 @@ connect();
   const b = document.getElementById('musicBtn'); if (!b || !window.Music) return;
   const show = () => { b.textContent = Music.isOn() ? 'Musique : oui' : 'Musique : non'; b.setAttribute('aria-pressed', Music.isOn() ? 'true' : 'false'); };
   b.addEventListener('click', () => { Music.setOn(!Music.isOn()); show(); });
+  show();
+})();
+
+// ---------- Bouton effets (indépendant de la musique) ----------
+(function () {
+  const b = document.getElementById('fxBtn'); if (!b || !window.FX) return;
+  const show = () => { b.textContent = FX.isOn() ? 'Effets : oui' : 'Effets : non'; b.setAttribute('aria-pressed', FX.isOn() ? 'true' : 'false'); };
+  b.addEventListener('click', () => { FX.setOn(!FX.isOn()); show(); });
   show();
 })();
