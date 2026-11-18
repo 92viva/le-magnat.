@@ -26,6 +26,10 @@ const MIME = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.webp': 'image/webp',
+  '.mp3': 'audio/mpeg',
+  '.m4a': 'audio/mp4',
+  '.ogg': 'audio/ogg',
+  '.wav': 'audio/wav',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.gif': 'image/gif',
@@ -60,13 +64,24 @@ function serveStatic(req, res) {
   if (!file.startsWith(PUBLIC + path.sep)) { res.writeHead(403); return res.end(); }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Introuvable'); }
-    res.writeHead(200, {
+    const hdr = {
       'Content-Type': MIME[path.extname(file)] || 'application/octet-stream',
-      'Cache-Control': /\.(png|webp|jpe?g|gif)$/.test(file) ? 'public, max-age=300' : 'no-cache',
+      'Cache-Control': /\.(png|webp|jpe?g|gif|mp3|m4a|ogg|wav)$/.test(file) ? 'public, max-age=300' : 'no-cache',
       'Content-Security-Policy': CSP,
       'X-Content-Type-Options': 'nosniff',
-      'Referrer-Policy': 'no-referrer'
-    });
+      'Referrer-Policy': 'no-referrer',
+      'Accept-Ranges': 'bytes'
+    };
+    const rg = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+    if (rg && (rg[1] || rg[2])) {                      // lecture partielle (audio)
+      let st = rg[1] ? +rg[1] : Math.max(0, data.length - +rg[2]), en = rg[1] && rg[2] ? +rg[2] : data.length - 1;
+      en = Math.min(en, data.length - 1);
+      if (st > en || st >= data.length) { res.writeHead(416, { 'Content-Range': 'bytes */' + data.length }); return res.end(); }
+      hdr['Content-Range'] = 'bytes ' + st + '-' + en + '/' + data.length; hdr['Content-Length'] = en - st + 1;
+      res.writeHead(206, hdr);
+      return res.end(req.method === 'HEAD' ? undefined : data.subarray(st, en + 1));
+    }
+    res.writeHead(200, hdr);
     res.end(req.method === 'HEAD' ? undefined : data);
   });
 }
