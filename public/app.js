@@ -474,6 +474,7 @@ function renderHand() {
   $('passBtn').disabled = !(mine && V.table);
   $('passBtn').classList.toggle('hint-pulse', !!stuck);
   const done = V.status === 'play' && V.hand.length === 0;
+  $('me').classList.toggle('done', done);
   $('specBtn').hidden = !done;
   $('specBtn').textContent = V.spec ? 'Mode spectateur : activé' : 'Mode spectateur : désactivé';
   $('specBtn').setAttribute('aria-pressed', String(!!V.spec));
@@ -504,6 +505,7 @@ function renderGame() {
   const order = [];
   for (let k = 1; k < V.n; k++) order.push((V.you + k) % V.n);
   $('opps').dataset.count = order.length;
+  $('opps').classList.toggle('spec', !!V.spectate);
   $('opps').innerHTML = order.map((i, k) => seatHTML(i, k)).join('');
   const enterKey = V.code + ':' + V.round;
   if (enterKey !== lastEnterKey) { lastEnterKey = enterKey; $('opps').classList.add('enter'); $('me').classList.add('enter'); setTimeout(() => { $('opps').classList.remove('enter'); $('me').classList.remove('enter'); }, 1300); }
