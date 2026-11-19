@@ -125,8 +125,13 @@
         <h1 class="h1-small">Le Magnat</h1>
         <p class="sub">Manche <b id="gRound">1</b> sur <b id="gRounds">3</b> · table <b id="gCode"></b> <span id="gRev" class="badge-rev" hidden>Révolution</span></p>
       </div>
-      <div class="topbtns"><button class="btn" id="fxBtn" type="button">Effets : oui</button><button class="btn" id="musicBtn" type="button">Musique : oui</button><button class="btn" id="leaveGame" type="button">Quitter</button></div>
+      <div class="topbtns"><button class="btn" id="leaveGame" type="button">Quitter</button></div>
     </header>
+
+    <section class="audiobar" aria-label="Son">
+      <div class="aud"><button class="btn" id="fxBtn" type="button">Effets : oui</button><input type="range" id="fxVol" min="0" max="100" step="1" value="70" aria-label="Volume des effets"></div>
+      <div class="aud"><button class="btn" id="musicBtn" type="button">Musique : oui</button><input type="range" id="musicVol" min="0" max="100" step="1" value="50" aria-label="Volume de la musique"></div>
+    </section>
 
     <section class="ladder" aria-label="Hiérarchie des cartes">
       <span class="end">Faible</span>

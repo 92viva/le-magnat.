@@ -378,3 +378,10 @@ select:hover, .input:hover { border-color: var(--red-hi); }
 #fxc { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 60; }
 @keyframes shake { 0%,100% { transform: none; } 15% { transform: translate(-8px, 4px) rotate(-.4deg); } 30% { transform: translate(7px, -5px) rotate(.4deg); } 45% { transform: translate(-6px, -3px); } 60% { transform: translate(5px, 4px); } 80% { transform: translate(-2px, 1px); } }
 body.shake #game { animation: shake .6s ease-out; }
+
+/* Réglages audio */
+.audiobar { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 4px 14px 0; }
+.audiobar .aud { display: flex; align-items: center; gap: 10px; flex: 1 1 220px; min-width: 0; }
+.audiobar .btn { flex: none; min-width: 9.5em; }
+.audiobar input[type=range] { flex: 1; min-width: 70px; accent-color: var(--red); height: 28px; }
+.audiobar input[type=range]:disabled { opacity: .35; }

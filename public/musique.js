@@ -3,9 +3,13 @@
    - Avec des fichiers public/musique/1.mp3, 2.mp3... : lus dans l'ordre, en boucle (voir LISEZMOI.txt). */
 (function () {
   'use strict';
-  const KEY = 'magnat-music', VOL = 0.35;
-  let on = true, active = false, started = false;
-  try { if (localStorage.getItem(KEY) === '0') on = false; } catch (e) {}
+  const KEY = 'magnat-music', VKEY = 'magnat-vol-music';
+  let on = true, active = false, started = false, level = 0.5, duck = 1;       // level = volume réglé (0..1), duck = 1 normal / 0 coupé pendant un effet
+  try { if (localStorage.getItem(KEY) === '0') on = false; const v = parseFloat(localStorage.getItem(VKEY)); if (v >= 0 && v <= 1) level = v; } catch (e) {}
+  function apply() {
+    if (audio) audio.volume = Math.max(0, Math.min(1, level * 0.7 * duck));
+    if (out && ctx) out.gain.setTargetAtTime(level * 0.44 * duck, ctx.currentTime, 0.05);
+  }
 
   // ----- fichiers
   let tracks = null, idx = 0, audio = null, probing = false;
@@ -24,9 +28,9 @@
     go(1);
   }
   function playFile() {
-    if (!audio) { audio = new Audio(); audio.volume = VOL; audio.preload = 'auto';
+    if (!audio) { audio = new Audio(); audio.preload = 'auto';
       audio.addEventListener('ended', () => { idx = (idx + 1) % tracks.length; audio.src = tracks[idx]; audio.play().catch(() => {}); }); }
-    audio.loop = tracks.length === 1;
+    audio.loop = tracks.length === 1; apply();
     if (!audio.src) audio.src = tracks[idx];
     audio.play().catch(() => { started = false; });         // bloqué par le navigateur : on réessaiera au prochain clic
   }
@@ -61,13 +65,14 @@
     }
   }
   function startSynth() {
-    if (!ctx) { const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return; ctx = new AC(); out = ctx.createGain(); out.gain.value = 0.22; out.connect(ctx.destination); }
+    if (!ctx) { const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return; ctx = new AC(); out = ctx.createGain(); out.gain.value = level * 0.44 * duck; out.connect(ctx.destination); }
     if (ctx.state === 'suspended') ctx.resume();
     if (!timer) { nextT = ctx.currentTime + 0.1; step = 0; timer = setInterval(schedule, 100); }
   }
   function stopSynth() { if (timer) { clearInterval(timer); timer = 0; } if (ctx && ctx.state === 'running') ctx.suspend(); }
 
   // ----- contrôle
+  let duckT = 0;
   function sync() {
     const want = on && active;
     if (!want) { if (audio) audio.pause(); stopSynth(); started = false; return; }
@@ -78,7 +83,14 @@
   window.Music = {
     setActive(v) { v = !!v; if (v !== active) { active = v; sync(); } },
     setOn(v) { on = !!v; try { localStorage.setItem(KEY, on ? '1' : '0'); } catch (e) {} sync(); },
-    isOn: () => on
+    isOn: () => on,
+    getVolume: () => level,
+    setVolume(v) { level = Math.max(0, Math.min(1, +v || 0)); try { localStorage.setItem(VKEY, String(level)); } catch (e) {} apply(); },
+    // coupe la musique de fond pendant un son important (révolution, fin de manche...), puis la remet
+    duck(sec) {
+      duck = 0; apply(); clearTimeout(duckT);
+      duckT = setTimeout(() => { duck = 1; apply(); }, Math.max(0.3, sec) * 1000 + 250);
+    }
   };
   // les navigateurs exigent un clic avant de jouer du son : on relance au prochain clic si besoin
   addEventListener('pointerdown', () => { if (on && active && !started) sync(); else if (ctx && ctx.state === 'suspended' && started) ctx.resume(); });

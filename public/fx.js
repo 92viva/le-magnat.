@@ -3,9 +3,11 @@
    Les sons sont generes par le navigateur (Web Audio). Tes propres sons : public/sons/LISEZMOI.txt */
 (function () {
   'use strict';
-  const KEY = 'magnat-fx';
-  let on = true;
-  try { if (localStorage.getItem(KEY) === '0') on = false; } catch (e) {}
+  const KEY = 'magnat-fx', VKEY = 'magnat-vol-fx';
+  let on = true, level = 0.7;
+  try { if (localStorage.getItem(KEY) === '0') on = false; const v = parseFloat(localStorage.getItem(VKEY)); if (v >= 0 && v <= 1) level = v; } catch (e) {}
+  // sons "importants" : la musique de fond est coupée pendant qu'ils jouent (durée en secondes). Pose, passe, tour, distribution : la musique continue.
+  const BIG = { revolution: 1.7, 'contre-revolution': 1.2, victoire: 0.8, magnat: 1.8, defaite: 1.0, fin: 1.8 };
   let ctx = null, master = null;
   const custom = {};
   const NAMES = ['pose', 'passe', 'tour', 'distribution', 'revolution', 'contre-revolution', 'victoire', 'magnat', 'defaite', 'fin'];
@@ -14,7 +16,7 @@
     if (!ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return null;
-      ctx = new AC(); master = ctx.createGain(); master.gain.value = 0.7; master.connect(ctx.destination);
+      ctx = new AC(); master = ctx.createGain(); master.gain.value = level; master.connect(ctx.destination);
       loadCustom();
     }
     if (ctx.state === 'suspended') ctx.resume();
@@ -69,7 +71,10 @@
   };
   function play(n, o) {
     if (!on) return; const c = ac(); if (!c) return;
-    try { if (!playCustom(n) && SND[n]) SND[n](o); } catch (e) {}
+    try {
+      if (BIG[n] && window.Music) Music.duck(custom[n] ? custom[n].duration : BIG[n]);
+      if (!playCustom(n) && SND[n]) SND[n](o);
+    } catch (e) {}
   }
 
   // ----- effets visuels
@@ -138,6 +143,7 @@
     else { play('victoire'); burst('win'); }
   }
   function setOn(v) { on = !!v; try { localStorage.setItem(KEY, on ? '1' : '0'); } catch (e) {} if (on) { ac(); play('tour'); } }
-  window.FX = { play, onState, onFinish, setOn, isOn: () => on };
+  function setVolume(v) { level = Math.max(0, Math.min(1, +v || 0)); try { localStorage.setItem(VKEY, String(level)); } catch (e) {} if (master) master.gain.value = level; }
+  window.FX = { play, onState, onFinish, setOn, isOn: () => on, getVolume: () => level, setVolume };
   addEventListener('pointerdown', () => { if (on) ac(); }, { once: true });
 })();

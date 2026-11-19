@@ -614,7 +614,7 @@ function renderOverlay() {
   $('panel').innerHTML = html;
   const next = $('ovNext'), again = $('ovAgain'), leave = $('ovLeave');
   if (next) { next.addEventListener('click', () => { next.disabled = true; send({ t: 'next' }); }); next.focus(); }
-  if (again) { again.addEventListener('click', () => { again.disabled = true; send({ t: 'again' }); }); again.focus(); }
+  if (again) { if (V.host !== V.you) again.textContent = 'Rejouer (l’hôte lance)'; again.addEventListener('click', () => { again.disabled = true; if (V.host !== V.you) again.textContent = 'En attente de l’hôte…'; send({ t: 'again' }); }); again.focus(); }
   if (leave) leave.addEventListener('click', () => send({ t: 'leave' }));
 }
 
@@ -634,18 +634,16 @@ render();
 connect();
 })();
 
-// ---------- Musique de fond ----------
+// ---------- Réglages audio : effets et musique (bouton + volume chacun) ----------
 (function () {
-  const b = document.getElementById('musicBtn'); if (!b || !window.Music) return;
-  const show = () => { b.textContent = Music.isOn() ? 'Musique : oui' : 'Musique : non'; b.setAttribute('aria-pressed', Music.isOn() ? 'true' : 'false'); };
-  b.addEventListener('click', () => { Music.setOn(!Music.isOn()); show(); });
-  show();
-})();
-
-// ---------- Bouton effets (indépendant de la musique) ----------
-(function () {
-  const b = document.getElementById('fxBtn'); if (!b || !window.FX) return;
-  const show = () => { b.textContent = FX.isOn() ? 'Effets : oui' : 'Effets : non'; b.setAttribute('aria-pressed', FX.isOn() ? 'true' : 'false'); };
-  b.addEventListener('click', () => { FX.setOn(!FX.isOn()); show(); });
-  show();
+  function wire(btnId, rngId, api, label) {
+    const b = document.getElementById(btnId), r = document.getElementById(rngId); if (!b || !r || !api) return;
+    const show = () => { b.textContent = label + ' : ' + (api.isOn() ? 'oui' : 'non'); b.setAttribute('aria-pressed', api.isOn() ? 'true' : 'false'); r.disabled = !api.isOn(); };
+    b.addEventListener('click', () => { api.setOn(!api.isOn()); show(); });
+    r.value = Math.round(api.getVolume() * 100);
+    r.addEventListener('input', () => api.setVolume(r.value / 100));
+    show();
+  }
+  wire('fxBtn', 'fxVol', window.FX, 'Effets');
+  wire('musicBtn', 'musicVol', window.Music, 'Musique');
 })();
