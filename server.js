@@ -491,15 +491,13 @@ function onMessage(conn, msg) {
       room.round++;
       return startRound(room, prev[room.seats.length - 1], prev);
     }
-    case 'again': {
+    case 'again': {                                       // rejouer : l'hôte relance directement une partie avec les mêmes joueurs
       if (room.status !== 'gameover') return;
-      room.status = 'lobby'; room.S = null; room.round = 0; room.results = null; room.shown = null; room.exchange = null;
-      room.scores = room.seats.map(() => 0);
-      room.msg = '';
-      // les joueurs déconnectés quittent la table pour la prochaine partie
-      for (let i = room.seats.length - 1; i >= 0; i--) if (!room.seats[i].bot && !room.seats[i].connected) removeSeat(room, i);
-      if (destroyIfEmpty(room)) return;
-      return broadcast(room);
+      if (!isHost) { room.msg = room.seats[me].name + ' veut rejouer. En attente de l’hôte.'; return broadcast(room); }
+      room.S = null; room.results = null; room.shown = null; room.exchange = null; room.msg = '';
+      // un joueur parti est remplacé par un bot pour garder la table complète
+      for (let i = 0; i < room.seats.length; i++) if (!room.seats[i].bot && !room.seats[i].connected) botify(room, i);
+      return startGame(room);
     }
   }
 }
